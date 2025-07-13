@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from rsa_keys import load_public_key_from_file, get_private_key_for_decryption
-from temp_utils import log_action
+from logger import log_action
 # Constants
 BLOCK_SIZE = 1024 * 1024  # 1MB
 FILE_SIZE_THRESHOLD = 5 * 1024 * 1024  # 5MB

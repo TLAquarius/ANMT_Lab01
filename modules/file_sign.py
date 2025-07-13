@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from rsa_keys import get_private_key_for_decryption, update_public_key_store, PUBLIC_KEY_DIR
-from temp_utils import log_action
+from logger import log_action
 
 LOG_FILE = "../data/security.log"
 SIGNATURE_DIR = "../data/signatures"

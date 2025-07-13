@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from temp_utils import log_action
+from logger import log_action
 
 PUBLIC_KEY_DIR = "../data/public_keys"
 def derive_key(passphrase: str, salt: bytes) -> bytes:
