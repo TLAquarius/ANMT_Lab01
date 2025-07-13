@@ -9,12 +9,12 @@ class SignupWindow:
         self.root = root  # Toplevel window
         self.main_window = main_window  # MainWindow instance
         self.root.title("Sign Up")
-        self.root.transient(main_window.root)  # Use main_window.root for transient
+        self.root.transient(main_window.root)
         self.root.grab_set()
 
         # Minimum window size
         self.min_width = 400
-        self.min_height = 500
+        self.min_height = 550  # Increased to accommodate new field
 
         # Add padding
         self.root.configure(padx=20, pady=20)
@@ -49,12 +49,20 @@ class SignupWindow:
         tk.Label(root, text="Passphrase").pack(pady=5)
         self.passphrase_entry = tk.Entry(root, show="*")
         self.passphrase_entry.pack(pady=5)
+        self.passphrase_error = tk.Label(root, text="", fg="red")
+        self.passphrase_error.pack()
+
+        tk.Label(root, text="Confirm Passphrase").pack(pady=5)
+        self.confirm_passphrase_entry = tk.Entry(root, show="*")
+        self.confirm_passphrase_entry.pack(pady=5)
+        self.confirm_passphrase_error = tk.Label(root, text="", fg="red")
+        self.confirm_passphrase_error.pack()
 
         # Checkbox for toggling passphrase visibility
         self.show_passphrase_var = tk.BooleanVar()
         tk.Checkbutton(
             root,
-            text="Show Passphrase",
+            text="Show Passphrases",
             variable=self.show_passphrase_var,
             command=self.toggle_passphrase
         ).pack(pady=5)
@@ -83,11 +91,13 @@ class SignupWindow:
         self.root.minsize(self.min_width, self.min_height)
 
     def toggle_passphrase(self):
-        """Toggle the visibility of the passphrase in the entry box."""
+        """Toggle the visibility of both passphrase entry boxes."""
         if self.show_passphrase_var.get():
             self.passphrase_entry.config(show="")
+            self.confirm_passphrase_entry.config(show="")
         else:
             self.passphrase_entry.config(show="*")
+            self.confirm_passphrase_entry.config(show="*")
 
     def validate_email(self, email):
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -113,27 +123,40 @@ class SignupWindow:
         phone = self.phone_entry.get()
         address = self.address_entry.get()
         passphrase = self.passphrase_entry.get()
+        confirm_passphrase = self.confirm_passphrase_entry.get()
 
         self.email_error.config(text="")
         self.dob_error.config(text="")
         self.phone_error.config(text="")
+        self.passphrase_error.config(text="")
+        self.confirm_passphrase_error.config(text="")
 
-        if not all([email, full_name, dob, phone, address, passphrase]):
+        # Check if all fields are filled
+        if not all([email, full_name, dob, phone, address, passphrase, confirm_passphrase]):
             messagebox.showerror("Error", "All fields are required")
             return
 
+        # Validate email
         if not self.validate_email(email):
             self.email_error.config(text="Invalid email format")
             return
 
+        # Validate date of birth
         if not self.validate_dob(dob):
             self.dob_error.config(text="Invalid date or format (use DD/MM/YYYY)")
             return
 
+        # Validate phone number
         if not self.validate_phone(phone):
             self.phone_error.config(text="Invalid phone number format (use digits, optional hyphens/spaces)")
             return
 
+        # Validate passphrase match
+        if passphrase != confirm_passphrase:
+            self.confirm_passphrase_error.config(text="Passphrases do not match")
+            return
+
+        # Call sign_up function
         success, message = sign_up(email, full_name, dob, phone, address, passphrase)
         if success:
             messagebox.showinfo("Success", message)

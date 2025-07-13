@@ -5,13 +5,14 @@ from modules.auth import verify_login, generate_otp, generate_totp_qr, verify_to
 from modules.logger import log_action
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from gui.dashboard_window import DashboardWindow  # Import DashboardWindow
 
 class LoginWindow:
     def __init__(self, root, main_window):
         self.root = root  # Toplevel window
         self.main_window = main_window  # MainWindow instance
         self.root.title("Login")
-        self.root.transient(main_window.root)  # Use main_window.root for transient
+        self.root.transient(main_window.root)
         self.root.grab_set()
 
         # Minimum window size
@@ -122,9 +123,8 @@ class LoginWindow:
                 expires = datetime.fromisoformat(self.otp_data["expires"])
                 now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
                 if now <= expires:
-                    messagebox.showinfo("Success", "Login successful")
                     log_action(self.user['email'], "verify_otp", "success")
-                    self.go_back()
+                    self.open_dashboard()
                 else:
                     messagebox.showerror("Error", "OTP expired")
                     log_action(self.user['email'], "verify_otp", "failed: OTP expired")
@@ -133,12 +133,18 @@ class LoginWindow:
                 log_action(self.user['email'], "verify_otp", "failed: Invalid OTP")
         else:
             if verify_totp(self.user["totp_secret"], code):
-                messagebox.showinfo("Success", "Login successful")
                 log_action(self.user['email'], "verify_totp", "success")
-                self.go_back()
+                self.open_dashboard()
             else:
                 messagebox.showerror("Error", "Invalid TOTP code")
                 log_action(self.user['email'], "verify_totp", "failed: Invalid TOTP code")
+
+    def open_dashboard(self):
+        """Open the dashboard window and close the login window."""
+        self.main_window.enable_buttons()
+        dashboard_window = tk.Toplevel(self.main_window.root)
+        DashboardWindow(dashboard_window, self.main_window, self.user)
+        self.root.destroy()
 
     def go_back(self):
         """Close the login window and re-enable main window buttons."""

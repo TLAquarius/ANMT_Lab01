@@ -3,12 +3,24 @@
         "email": "thanh@gmail.com",
         "full_name": "Le Thanh",
         "dob": "16/02/2004",
-        "phone": "12345",
+        "phone": "331321",
         "address": "test",
-        "hashed_passphrase": "FEPoLH3sjuVAOY8oWisc+0qLLsdOTw4ct7g3wUMLucY=",
-        "salt": "JGcYguGCp6NFGb8OQrcL0Q==",
+        "hashed_passphrase": "2GDOr9nDY2PhUH/6h4s7MPnsdLT4bgb2HJNgNQ5tNI0=",
+        "salt": "/XHlvOKCwFOWUlt99UT1TA==",
         "role": "user",
         "status": "unlocked",
-        "totp_secret": "KMWRNIHXSDOFW3AXVN2BLCIEVUJPTP7E"
+        "totp_secret": "A4HAPU3GHBISKCQXZI27MRU2JSFGPR4L"
+    },
+    {
+        "email": "thanh2@gmail.com",
+        "full_name": "Test",
+        "dob": "12/12/2021",
+        "phone": "3213123",
+        "address": "test",
+        "hashed_passphrase": "Z8DRcXwPzGwssJFUx0P5we4LzNG7LruG68Vf8Hpe03s=",
+        "salt": "N+NWNQID+JMuw4MJ/fS1Fw==",
+        "role": "user",
+        "status": "unlocked",
+        "totp_secret": "KPLYBKJDEZP22H43YLAN4WEGQC7K4GUM"
     }
 ]

@@ -85,7 +85,7 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
 
         safe_email = email.replace("@", "_at_").replace(".", "_dot_")
         # Create user folder structure in data directory
-        data_dir = Path("../data")
+        data_dir = Path("./data")
         user_dir = data_dir / safe_email
         storage_dir = user_dir / "storage"
         public_keys_dir = data_dir / "public_keys"
@@ -96,9 +96,9 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
         public_keys_dir.mkdir(parents=True, exist_ok=True)
 
         # Create empty JSON files
-        (user_dir / "rsa_keypair.json").write_text("{}")
-        (user_dir / "archived_keys.json").write_text("[]")
-        (public_keys_dir / f"{email}.json").write_text("{}")
+        (user_dir / "rsa_keypair.json").write_text("")
+        (user_dir / "archived_keys.json").write_text("")
+        (public_keys_dir / f"{safe_email}.json").write_text("")
 
         log_action(email, "sign_up", "success")
         return True, "User registered successfully"
@@ -152,7 +152,8 @@ def generate_totp_qr(email: str, totp_secret: str) -> str:
     qr = qrcode.QRCode()
     qr.add_data(uri)
     qr.make(fit=True)
-    qr_path = f"../data/{email}/qr.png"
+    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+    qr_path = f"./data/{safe_email}/qrTOTP.png"
     os.makedirs(os.path.dirname(qr_path), exist_ok=True)
     qr.make_image(fill_color="black", back_color="white").save(qr_path)
     return qr_path
