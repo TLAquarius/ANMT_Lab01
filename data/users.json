@@ -1,0 +1,14 @@
+[
+    {
+        "email": "thanh@gmail.com",
+        "full_name": "Le Thanh",
+        "dob": "16/02/2004",
+        "phone": "12345",
+        "address": "test",
+        "hashed_passphrase": "FEPoLH3sjuVAOY8oWisc+0qLLsdOTw4ct7g3wUMLucY=",
+        "salt": "JGcYguGCp6NFGb8OQrcL0Q==",
+        "role": "user",
+        "status": "unlocked",
+        "totp_secret": "KMWRNIHXSDOFW3AXVN2BLCIEVUJPTP7E"
+    }
+]
