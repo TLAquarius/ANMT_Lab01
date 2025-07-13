@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from rsa_keys import load_public_key_from_file, get_private_key_for_decryption
+from rsa_keys import load_current_public_key, get_private_key_for_decryption
 from logger import log_action
 # Constants
 BLOCK_SIZE = 1024 * 1024  # 1MB
@@ -17,7 +17,7 @@ def encrypt_file_with_metadata(input_path, output_path, sender_email, recipient_
     """Encrypt a file with block-based encryption and optional key splitting."""
     try:
         # Load recipient's public key
-        public_key = load_public_key_from_file(recipient_email)
+        public_key = load_current_public_key(recipient_email)
 
         # Generate AES session key
         ksession = AESGCM.generate_key(bit_length=256)
