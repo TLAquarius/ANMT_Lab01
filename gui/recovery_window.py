@@ -38,7 +38,7 @@ class RecoveryWindow:
         button_frame = tk.Frame(root)
         button_frame.pack(pady=20)
         tk.Button(button_frame, text="Đặt lại", command=self.submit).pack(side=tk.LEFT, padx=10)
-        tk.Button(button_frame, text="Hủy", command=self.root.destroy).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Hủy", command=self.cancel).pack(side=tk.LEFT, padx=10)
 
         self.adjust_window_size()
 
@@ -54,6 +54,11 @@ class RecoveryWindow:
         y = (screen_height - final_height) // 2
         self.root.geometry(f"{final_width}x{final_height}+{x}+{y}")
         self.root.minsize(self.min_width, self.min_height)
+
+    def cancel(self):
+        """Handle cancellation by re-enabling main window buttons and closing the window."""
+        self.main_window.enable_buttons()
+        self.root.destroy()
 
     def submit(self):
         email = self.email_entry.get().strip()
@@ -93,9 +98,14 @@ class RecoveryWindow:
             success, message = reset_passphrase(email, recovery_code, new_passphrase)
             if success:
                 messagebox.showinfo("Thành công", message)
+                self.main_window.enable_buttons()  # Re-enable main window buttons
                 self.root.destroy()
             else:
                 self.error_label.config(text=message)
+                # Optionally re-enable buttons here if you want to allow retry after failure
+                self.main_window.enable_buttons()
         except Exception as e:
             log_action(email, "reset_passphrase", f"failed: {str(e)}")
             self.error_label.config(text=f"Lỗi: {str(e)}")
+            # Optionally re-enable buttons here if you want to allow retry after exception
+            self.main_window.enable_buttons()
