@@ -11,6 +11,7 @@ from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
 from modules.file_crypto import encrypt_file_with_metadata, decrypt_file
+from modules.file_sign import sign_file as sign_file_logic, verify_signature as verify_signature_logic
 from gui.key_status_ui import KeyStorageWindow
 from modules.admin import is_admin
 from gui.admin_panel import AdminWindow
@@ -25,7 +26,7 @@ class DashboardWindow:
         self.root.grab_set()
 
         self.min_width = 400
-        self.min_height = 700
+        self.min_height = 800  # Increased height for new buttons
 
         self.root.configure(padx=20, pady=20)
 
@@ -57,6 +58,12 @@ class DashboardWindow:
         tk.Button(root, text="Search Public Key", command=self.search_public_key).pack(pady=10)
         tk.Button(root, text="Encrypt File", command=self.encrypt_file).pack(pady=10)
         tk.Button(root, text="Decrypt File", command=self.decrypt_file).pack(pady=10)
+        
+        # --- NEW BUTTONS FOR SIGNING AND VERIFYING ---
+        tk.Button(root, text="Ký File", command=self.sign_file).pack(pady=10)
+        tk.Button(root, text="Xác Thực Chữ Ký", command=self.verify_signature).pack(pady=10)
+        # --- END OF NEW BUTTONS ---
+
         tk.Button(root, text="Logout", command=self.logout).pack(pady=10)
 
         self.adjust_window_size()
@@ -99,7 +106,6 @@ class DashboardWindow:
 
     def open_admin(self):
         """Open the admin window."""
-        #self.main_window.disable_buttons()
         admin_window = tk.Toplevel(self.main_window.root)
         admin_window.transient(self.root)
         admin_window.grab_set()
@@ -553,6 +559,105 @@ class DashboardWindow:
         x = (decrypt_window.winfo_screenwidth() - req_width) // 2
         y = (decrypt_window.winfo_screenheight() - req_height) // 2
         decrypt_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+    def sign_file(self):
+        sign_window = tk.Toplevel(self.root)
+        sign_window.title("Ký File")
+        sign_window.transient(self.root)
+        sign_window.grab_set()
+        sign_window.configure(padx=10, pady=10)
+
+        tk.Label(sign_window, text="Chọn file để ký").pack(pady=5)
+        file_entry = tk.Entry(sign_window, width=50)
+        file_entry.pack(pady=5)
+        tk.Button(sign_window, text="Browse", command=lambda: file_entry.insert(tk.END, filedialog.askopenfilename())).pack(pady=5)
+
+        tk.Label(sign_window, text="Nhập Passphrase của bạn").pack(pady=5)
+        passphrase_entry = tk.Entry(sign_window, show="*")
+        passphrase_entry.pack(pady=5)
+
+        def perform_sign():
+            file_path = file_entry.get().strip()
+            passphrase = passphrase_entry.get().strip()
+
+            if not file_path or not passphrase:
+                messagebox.showerror("Lỗi", "Vui lòng chọn file và nhập passphrase.", parent=sign_window)
+                return
+
+            try:
+                success, message, sig_path = sign_file_logic(file_path, self.email, passphrase)
+                if success:
+                    messagebox.showinfo("Thành công", message, parent=sign_window)
+                    sign_window.destroy()
+                else:
+                    messagebox.showerror("Lỗi", message, parent=sign_window)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Đã xảy ra lỗi không mong muốn: {str(e)}", parent=sign_window)
+                log_action(self.email, "sign_file_gui", f"failed: {str(e)}")
+
+        button_frame = tk.Frame(sign_window)
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Ký", command=perform_sign).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=sign_window.destroy).pack(side=tk.LEFT, padx=5)
+        
+        sign_window.update_idletasks()
+        x = (sign_window.winfo_screenwidth() - sign_window.winfo_width()) // 2
+        y = (sign_window.winfo_screenheight() - sign_window.winfo_height()) // 2
+        sign_window.geometry(f"+{x}+{y}")
+
+    def verify_signature(self):
+        verify_window = tk.Toplevel(self.root)
+        verify_window.title("Xác Thực Chữ Ký")
+        verify_window.transient(self.root)
+        verify_window.grab_set()
+        verify_window.configure(padx=10, pady=10)
+
+        tk.Label(verify_window, text="Chọn file gốc").pack(pady=5)
+        file_entry = tk.Entry(verify_window, width=50)
+        file_entry.pack(pady=5)
+        tk.Button(verify_window, text="Browse", command=lambda: file_entry.insert(tk.END, filedialog.askopenfilename())).pack(pady=5)
+
+        tk.Label(verify_window, text="Chọn file chữ ký (.sig)").pack(pady=5)
+        sig_entry = tk.Entry(verify_window, width=50)
+        sig_entry.pack(pady=5)
+        tk.Button(verify_window, text="Browse", command=lambda: sig_entry.insert(tk.END, filedialog.askopenfilename(
+            filetypes=[("Signature Files", "*.sig"), ("All Files", "*.*")]
+        ))).pack(pady=5)
+
+        def perform_verify():
+            file_path = file_entry.get().strip()
+            sig_path = sig_entry.get().strip()
+
+            if not file_path or not sig_path:
+                messagebox.showerror("Lỗi", "Vui lòng chọn cả file gốc và file chữ ký.", parent=verify_window)
+                return
+
+            try:
+                # Pass current user's email for logging purposes
+                result = verify_signature_logic(file_path, sig_path, self.email)
+                
+                if result.get("valid"):
+                    message = (f"Xác thực thành công!\n\n"
+                               f"Người ký: {result.get('signer_email', 'N/A')}\n"
+                               f"Thời gian ký: {datetime.fromisoformat(result['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+                    messagebox.showinfo("Thành công", message, parent=verify_window)
+                else:
+                    error_message = result.get("message", "Lỗi không xác định.")
+                    messagebox.showerror("Thất bại", f"Xác thực chữ ký thất bại.\nLý do: {error_message}", parent=verify_window)
+                verify_window.destroy()
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Đã xảy ra lỗi trong quá trình xác thực: {str(e)}", parent=verify_window)
+                log_action(self.email, "verify_signature_gui", f"failed: {str(e)}")
+
+        button_frame = tk.Frame(verify_window)
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Xác thực", command=perform_verify).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=verify_window.destroy).pack(side=tk.LEFT, padx=5)
+
+        verify_window.update_idletasks()
+        x = (verify_window.winfo_screenwidth() - verify_window.winfo_width()) // 2
+        y = (verify_window.winfo_screenheight() - verify_window.winfo_height()) // 2
+        verify_window.geometry(f"+{x}+{y}")
 
     def logout(self):
         log_action(self.email, "logout", "success")

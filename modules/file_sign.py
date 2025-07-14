@@ -1,148 +1,171 @@
-import os
 import json
 import base64
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-from modules.rsa_keys import get_private_key_for_decryption, update_public_key_store, PUBLIC_KEY_DIR
+from modules.rsa_keys import get_active_private_key
 from modules.logger import log_action
 
-LOG_FILE = "../data/security.log"
-SIGNATURE_DIR = "../data/signatures"
+# Thư mục chứa các public key đã được lưu
+PUBLIC_KEYS_DIR = Path("./data/public_keys")
 
-def sign_file(file_path: str, email: str, passphrase: str, output_dir: str = SIGNATURE_DIR):
-    """Sign a file and create a .sig file with metadata."""
+def sign_file(file_path: str, signer_email: str, passphrase: str) -> tuple[bool, str, str]:
+    """
+    Ký một tệp bằng khóa riêng của người dùng và tạo tệp chữ ký .sig.
+    Hàm này sẽ thất bại nếu passphrase không chính xác, khóa hết hạn hoặc không tồn tại.
+
+    Args:
+        file_path: Đường dẫn đến tệp cần ký.
+        signer_email: Email của người ký.
+        passphrase: Mật khẩu để giải mã khóa riêng.
+
+    Returns:
+        (success, message, signature_path)
+    """
     try:
-        # Get private key
-        timestamp = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat()
-        private_key = get_private_key_for_decryption(email, passphrase, timestamp)
+        input_file = Path(file_path)
+        if not input_file.exists():
+            raise FileNotFoundError(f"Tệp không tồn tại: {file_path}")
 
-        # Read and hash file
-        with open(file_path, "rb") as f:
-            data = f.read()
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(data)
-        file_hash = digest.finalize()
+        # Lấy khóa riêng để ký. Hàm này sẽ ném ra ValueError nếu có lỗi.
+        private_key = get_active_private_key(signer_email, passphrase)
 
-        # Sign hash
+        # Đọc và băm nội dung tệp
+        with open(input_file, "rb") as f:
+            data_to_sign = f.read()
+        file_hash = hashes.Hash(hashes.SHA256())
+        file_hash.update(data_to_sign)
+        digest = file_hash.finalize()
+
+        # Ký vào chuỗi hash
         signature = private_key.sign(
-            file_hash,
+            digest,
             padding.PKCS1v15(),
             hashes.SHA256()
         )
 
-        # Create signature file
+        # Chuẩn bị dữ liệu cho tệp .sig
+        timestamp = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat()
         sig_data = {
-            "signature": base64.b64encode(signature).decode(),
+            "signature": base64.b64encode(signature).decode('utf-8'),
             "metadata": {
-                "signer_email": email,
-                "file_name": os.path.basename(file_path),
+                "signer_email": signer_email,
+                "original_filename": input_file.name,
                 "timestamp": timestamp,
                 "hash_algorithm": "SHA-256",
                 "signature_algorithm": "RSA-PKCS1v15"
             }
         }
 
-        # Save .sig file
-        os.makedirs(output_dir, exist_ok=True)
-        sig_path = os.path.join(output_dir, f"{os.path.basename(file_path)}.sig")
-        with open(sig_path, "w") as f:
+        # Lưu tệp .sig
+        safe_email = signer_email.replace("@", "_at_").replace(".", "_dot_")
+        signature_dir = Path(f"./data/{safe_email}/signatures")
+        signature_dir.mkdir(parents=True, exist_ok=True)
+        signature_path = signature_dir / f"{input_file.name}.sig"
+
+        with open(signature_path, "w") as f:
             json.dump(sig_data, f, indent=4)
 
-        # Update public key store
-        update_public_key_store(email)
+        log_action(signer_email, "sign_file", f"success: Signed {input_file.name}, saved to {signature_path}")
+        return True, f"Tệp đã được ký thành công! Chữ ký được lưu tại:\n{signature_path}", str(signature_path)
 
-        log_action(email, "sign_file", f"success: {sig_path}")
-        print(f"✅ Signature saved: {sig_path}")
-        return sig_path
-
+    except (ValueError, FileNotFoundError) as e:
+        # Bắt các lỗi đã biết (passphrase sai, khóa hết hạn, tệp không tồn tại, v.v.)
+        log_action(signer_email, "sign_file", f"failed: {str(e)}")
+        return False, f"Lỗi khi ký tệp: {str(e)}", ""
     except Exception as e:
-        log_action(email, "sign_file", f"failed: {str(e)}")
-        raise
+        # Bắt các lỗi không mong muốn khác
+        log_action(signer_email, "sign_file", f"failed: Unexpected error - {str(e)}")
+        return False, f"Lỗi không mong muốn đã xảy ra: {str(e)}", ""
 
+def verify_signature(original_file_path: str, signature_file_path: str, verifier_email: str) -> dict:
+    """
+    Xác minh chữ ký của một tệp bằng cách sử dụng tất cả các public key đã lưu.
 
-def verify_signature(file_path: str, sig_path: str) -> dict:
-    """Verify a file's signature against all stored public keys."""
+    Args:
+        original_file_path: Đường dẫn đến tệp gốc.
+        signature_file_path: Đường dẫn đến tệp .sig.
+        verifier_email: Email của người thực hiện xác minh (để ghi log).
+
+    Returns:
+        Một dictionary chứa kết quả xác minh.
+    """
+    result = {"valid": False, "message": "Xác minh thất bại.", "signer_email": None, "timestamp": None}
     try:
-        # Load signature file
-        with open(sig_path, "r") as f:
+        # Đọc tệp gốc và tệp chữ ký
+        original_file = Path(original_file_path)
+        sig_file = Path(signature_file_path)
+        if not original_file.exists() or not sig_file.exists():
+            result["message"] = "Tệp gốc hoặc tệp chữ ký không tồn tại."
+            raise ValueError(result["message"])
+
+        # Đọc và băm tệp gốc
+        with open(original_file, "rb") as f:
+            data_to_verify = f.read()
+        file_hash = hashes.Hash(hashes.SHA256())
+        file_hash.update(data_to_verify)
+        digest = file_hash.finalize()
+
+        # Đọc tệp chữ ký
+        with open(sig_file, "r") as f:
             sig_data = json.load(f)
         signature = base64.b64decode(sig_data["signature"])
-        signer_email = sig_data["metadata"]["signer_email"]
-        timestamp = sig_data["metadata"]["timestamp"]
+        metadata = sig_data["metadata"]
+        signing_time = datetime.fromisoformat(metadata["timestamp"])
 
-        # Read and hash file
-        with open(file_path, "rb") as f:
-            data = f.read()
-        digest = hashes.Hash(hashes.SHA256())
-        digest.update(data)
-        file_hash = digest.finalize()
+        # Duyệt qua tất cả các public key đã lưu để tìm khóa hợp lệ
+        found_valid_key = False
+        if not PUBLIC_KEYS_DIR.exists():
+             result["message"] = "Không tìm thấy thư mục chứa các khóa công khai."
+             raise FileNotFoundError(result["message"])
 
-        # Load all public keys
-        found_valid = False
-        result = {"valid": False, "signer_email": None, "timestamp": None, "error": None}
-
-        for pub_key_file in os.listdir(PUBLIC_KEY_DIR):
+        for key_file in PUBLIC_KEYS_DIR.iterdir():
+            if not key_file.is_file() or not key_file.name.endswith('.json'):
+                continue
             try:
-                with open(f"{PUBLIC_KEY_DIR}/{pub_key_file}", "r") as f:
-                    public_keys = json.load(f)
-                for key_data in public_keys:
-                    public_key = serialization.load_pem_public_key(
-                        base64.b64decode(key_data["public_key"])
-                    )
-                    try:
-                        public_key.verify(
-                            signature,
-                            file_hash,
-                            padding.PKCS1v15(),
-                            hashes.SHA256()
-                        )
-                        # Check if key was valid at signing time
-                        key_created = datetime.fromisoformat(key_data["created"])
-                        key_expires = datetime.fromisoformat(key_data["expires"])
-                        sign_time = datetime.fromisoformat(timestamp)
-                        if key_created <= sign_time <= key_expires:
-                            found_valid = True
-                            result = {
-                                "valid": True,
-                                "signer_email": key_data["email"],
-                                "timestamp": timestamp,
-                                "error": None
-                            }
-                            break
-                    except Exception:
-                        continue
-                if found_valid:
-                    break
-            except (FileNotFoundError, json.JSONDecodeError):
+                with open(key_file, "r") as f:
+                    key_data = json.load(f)
+
+                # Kiểm tra xem khóa có hợp lệ tại thời điểm ký không
+                key_created = datetime.fromisoformat(key_data["created"])
+                key_expires = datetime.fromisoformat(key_data["expires"])
+
+                if not (key_created <= signing_time <= key_expires):
+                    continue # Bỏ qua nếu khóa không hợp lệ tại thời điểm đó
+
+                public_key_pem = base64.b64decode(key_data["public_key"])
+                public_key = serialization.load_pem_public_key(public_key_pem)
+
+                # Thử xác minh
+                public_key.verify(
+                    signature,
+                    digest,
+                    padding.PKCS1v15(),
+                    hashes.SHA256()
+                )
+
+                # Nếu không có lỗi, chữ ký hợp lệ
+                result = {
+                    "valid": True,
+                    "message": "Chữ ký hợp lệ!",
+                    "signer_email": key_data["email"],
+                    "timestamp": metadata["timestamp"]
+                }
+                found_valid_key = True
+                break # Thoát khỏi vòng lặp khi đã tìm thấy khóa hợp lệ
+            except Exception:
+                # Bỏ qua lỗi và thử với khóa tiếp theo
                 continue
 
-        if not found_valid:
-            result["error"] = "No valid public key found to verify the signature"
+        if not found_valid_key:
+            result["message"] = "Chữ ký không hợp lệ hoặc không tìm thấy khóa công khai phù hợp (có thể khóa đã hết hạn tại thời điểm ký)."
 
-        log_action(signer_email, "verify_signature", f"{'success' if found_valid else 'failed'}: {file_path}")
-        if found_valid:
-            print(f"✅ Signature verified: Signed by {result['signer_email']} at {result['timestamp']}")
-        else:
-            print(f"❌ Signature verification failed: {result['error']}")
+        log_action(verifier_email, "verify_signature", f"{'success' if found_valid_key else 'failed'}: {result['message']} for file {original_file.name}")
         return result
 
     except Exception as e:
-        log_action(signer_email, "verify_signature", f"failed: {str(e)}")
-        raise
-
-if __name__ == "__main__":
-    # Sign a file
-    sign_file(
-        "../data/ComputerSecurity_PRJ1.pdf",
-        "test@gmail",
-        "test",
-        "../data/signatures"
-    )
-
-    # Verify the signature
-    verify_signature(
-        "../data/ComputerSecurity_PRJ1.pdf",
-        "../data/signatures/ComputerSecurity_PRJ1.pdf.sig"
-    )
+        result["message"] = f"Lỗi khi xác minh: {str(e)}"
+        log_action(verifier_email, "verify_signature", f"failed: {str(e)}")
+        return result
