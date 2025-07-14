@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import re
 from datetime import datetime
 from modules.auth import sign_up
@@ -9,12 +9,12 @@ class SignupWindow:
         self.root = root  # Toplevel window
         self.main_window = main_window  # MainWindow instance
         self.root.title("Sign Up")
-        self.root.transient(main_window.root)  # Use main_window.root for transient
+        self.root.transient(main_window.root)
         self.root.grab_set()
 
         # Minimum window size
         self.min_width = 400
-        self.min_height = 500
+        self.min_height = 550
 
         # Add padding
         self.root.configure(padx=20, pady=20)
@@ -49,12 +49,20 @@ class SignupWindow:
         tk.Label(root, text="Passphrase").pack(pady=5)
         self.passphrase_entry = tk.Entry(root, show="*")
         self.passphrase_entry.pack(pady=5)
+        self.passphrase_error = tk.Label(root, text="", fg="red")
+        self.passphrase_error.pack()
+
+        tk.Label(root, text="Confirm Passphrase").pack(pady=5)
+        self.confirm_passphrase_entry = tk.Entry(root, show="*")
+        self.confirm_passphrase_entry.pack(pady=5)
+        self.confirm_passphrase_error = tk.Label(root, text="", fg="red")
+        self.confirm_passphrase_error.pack()
 
         # Checkbox for toggling passphrase visibility
         self.show_passphrase_var = tk.BooleanVar()
         tk.Checkbutton(
             root,
-            text="Show Passphrase",
+            text="Show Passphrases",
             variable=self.show_passphrase_var,
             command=self.toggle_passphrase
         ).pack(pady=5)
@@ -83,11 +91,13 @@ class SignupWindow:
         self.root.minsize(self.min_width, self.min_height)
 
     def toggle_passphrase(self):
-        """Toggle the visibility of the passphrase in the entry box."""
+        """Toggle the visibility of both passphrase entry boxes."""
         if self.show_passphrase_var.get():
             self.passphrase_entry.config(show="")
+            self.confirm_passphrase_entry.config(show="")
         else:
             self.passphrase_entry.config(show="*")
+            self.confirm_passphrase_entry.config(show="*")
 
     def validate_email(self, email):
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -106,6 +116,30 @@ class SignupWindow:
         pattern = r'^\+?\d+([-.\s]?\d+)*$'
         return bool(re.match(pattern, phone))
 
+    def show_copyable_info(self, title, message, recovery_code):
+        window = tk.Toplevel()
+        window.title(title)
+        window.resizable(False, False)
+        window.grab_set()  # Modal
+
+        ttk.Label(window, text=message).pack(padx=10, pady=(10, 0))
+
+        entry = tk.Entry(window, width=40)
+        entry.insert(0, recovery_code)
+        entry.configure(state='readonly')  # Allow copy but not edit
+        entry.pack(padx=10, pady=5)
+        entry.focus()
+        entry.selection_range(0, tk.END)  # Auto-select
+
+        ttk.Button(window, text="OK", command=window.destroy).pack(pady=(0, 10))
+
+        # Optional: Center window
+        window.update_idletasks()
+        w, h = window.winfo_width(), window.winfo_height()
+        x = (window.winfo_screenwidth() // 2) - (w // 2)
+        y = (window.winfo_screenheight() // 2) - (h // 2)
+        window.geometry(f'{w}x{h}+{x}+{y}')
+
     def submit(self):
         email = self.email_entry.get()
         full_name = self.name_entry.get()
@@ -113,19 +147,25 @@ class SignupWindow:
         phone = self.phone_entry.get()
         address = self.address_entry.get()
         passphrase = self.passphrase_entry.get()
+        confirm_passphrase = self.confirm_passphrase_entry.get()
 
         self.email_error.config(text="")
         self.dob_error.config(text="")
         self.phone_error.config(text="")
+        self.passphrase_error.config(text="")
+        self.confirm_passphrase_error.config(text="")
 
-        if not all([email, full_name, dob, phone, address, passphrase]):
+        # Check if all fields are filled
+        if not all([email, full_name, dob, phone, address, passphrase, confirm_passphrase]):
             messagebox.showerror("Error", "Vui lòng điền đầy đủ thông tin")
             return
 
+        # Validate email
         if not self.validate_email(email):
-            self.email_error.config(text="Email không hợp lệ")
+            self.email_error.config(text="Format email không hợp lệ")
             return
 
+        # Validate date of birth
         if not self.validate_dob(dob):
             self.dob_error.config(text="Ngày sinh không hợp lệ (định dạng: DD/MM/YYYY)")
             return
@@ -134,9 +174,14 @@ class SignupWindow:
             self.phone_error.config(text="Số điện thoại không hợp lệ")
             return
 
+        # Validate passphrase match
+        if passphrase != confirm_passphrase:
+            self.confirm_passphrase_error.config(text="Mật khẩu không khớp")
+            return
+
         success, message, recovery_code = sign_up(email, full_name, dob, phone, address, passphrase)
         if success:
-            messagebox.showinfo("Success", f"{message}\nMã khôi phục: {recovery_code}\nVui lòng ghi nhớ mã này")
+            self.show_copyable_info("Success", f"{message}\nMã khôi phục (Vui lòng ghi nhớ mã này): ",recovery_code)
             self.go_back()
         else:
             messagebox.showerror("Error", message)

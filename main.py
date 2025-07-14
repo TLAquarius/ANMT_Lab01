@@ -2,6 +2,7 @@ import tkinter as tk
 from gui.register_window import SignupWindow
 from gui.login_window import LoginWindow
 from gui.recovery_window import RecoveryWindow
+from gui.admin_panel import AdminWindow
 
 class MainWindow:
     def __init__(self, root):
@@ -11,10 +12,8 @@ class MainWindow:
         self.min_height = 200
         self.root.configure(padx=20, pady=20)
 
-        # Welcome label
         tk.Label(root, text="Welcome to the Authentication System").pack(pady=10)
 
-        # Buttons
         self.signup_button = tk.Button(root, text="Sign Up", command=self.open_signup)
         self.signup_button.pack(pady=10)
         self.login_button = tk.Button(root, text="Login", command=self.open_login)
@@ -22,11 +21,9 @@ class MainWindow:
         self.reset_button = tk.Button(root, text="Reset Passphrase", command=self.open_reset)
         self.reset_button.pack(pady=10)
 
-        # Adjust window size
         self.adjust_window_size()
 
     def adjust_window_size(self):
-        """Adjust window size to fit all elements with minimum size constraints."""
         self.root.update_idletasks()
         req_width = self.root.winfo_reqwidth() + 40
         req_height = self.root.winfo_reqheight() + 40
@@ -40,31 +37,32 @@ class MainWindow:
         self.root.minsize(self.min_width, self.min_height)
 
     def disable_buttons(self):
-        """Disable the signup and login buttons."""
         self.signup_button.config(state="disabled")
         self.login_button.config(state="disabled")
 
     def enable_buttons(self):
-        """Enable the signup and login buttons."""
         self.signup_button.config(state="normal")
         self.login_button.config(state="normal")
 
     def open_signup(self):
-        """Open the signup window and disable main window buttons."""
         self.disable_buttons()
         signup_window = tk.Toplevel(self.root)
-        SignupWindow(signup_window, self)  # Pass self (MainWindow instance)
+        SignupWindow(signup_window, self)
 
     def open_login(self):
-        """Open the login window and disable main window buttons."""
         self.disable_buttons()
         login_window = tk.Toplevel(self.root)
-        LoginWindow(login_window, self)  # Pass self (MainWindow instance)
+        LoginWindow(login_window, self)
 
     def open_reset(self):
-        """Open the reset passphrase window"""
+        self.disable_buttons()
         reset_window = tk.Toplevel(self.root)
-        RecoveryWindow(reset_window, self)  # Pass self (MainWindow instance)
+        RecoveryWindow(reset_window, self)
+
+    def open_admin(self, admin_email):
+        self.disable_buttons()
+        admin_window = tk.Toplevel(self.root)
+        AdminWindow(admin_window, self, admin_email)
 
 if __name__ == "__main__":
     root = tk.Tk()

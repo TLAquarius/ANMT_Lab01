@@ -4,12 +4,14 @@ import base64
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.logger import log_action
+from pathlib import Path
 
-PUBLIC_KEY_DIR = "./data/public_keys"
+PUBLIC_KEY_DIR = Path("./data/public_keys")
+
 def derive_key(passphrase: str, salt: bytes) -> bytes:
     """Derives AES key from passphrase using PBKDF2."""
     kdf = PBKDF2HMAC(
@@ -17,51 +19,82 @@ def derive_key(passphrase: str, salt: bytes) -> bytes:
     )
     return kdf.derive(passphrase.encode())
 
+def update_key_status(key_data, now):
+    """Update the status of a key based on its expiration and current time."""
+    expires = datetime.fromisoformat(key_data["expires"])
+    valid_days = (expires - now).days
+    if key_data["status"] == "in used":
+        if valid_days < 0:
+            key_data["status"] = "expired"
+        elif valid_days <= 30:
+            key_data["status"] = "almost expired"
+    return key_data
 
-def archive_old_key(email: str, current_key_data: dict):
-    """Archive an expired key pair to archived_keys.json."""
-    archive_path = f"./data/{email}/archived_keys.json"
-    os.makedirs(f"./data/{email}", exist_ok=True)
+def update_public_key_store(email: str):
+    """Update public key store with the current key for the user (single dict)."""
+    PUBLIC_KEY_DIR.mkdir(parents=True, exist_ok=True)
+    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+    public_key_path = PUBLIC_KEY_DIR / f"{safe_email}.json"
+    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
 
-    # Load existing archived keys or initialize empty list
+    # Load current key
+    key_data = {}
     try:
-        with open(archive_path, "r") as f:
-            archived_keys = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        archived_keys = []
+        with open(f"./data/{safe_email}/rsa_keypair.json", "r") as f:
+            key_data = json.load(f)
+            key_data = update_key_status(key_data, now)
+            with open(f"./data/{safe_email}/rsa_keypair.json", "w") as f:
+                json.dump(key_data, f, indent=4)
+        public_key_data = {
+            "public_key": key_data["public_key"],
+            "created": key_data["created"],
+            "expires": key_data["expires"],
+            "status": key_data["status"],
+            "email": email
+        }
+        # Save as single dict, not a list
+        with open(public_key_path, "w") as f:
+            json.dump(public_key_data, f, indent=4)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        log_action(email, "update_public_key_store", f"failed: {str(e)}")
+        # Remove public key file if no valid key exists
+        if public_key_path.exists():
+            public_key_path.unlink()
 
-    # Add the current key to the archive
-    archived_keys.append(current_key_data)
-
-    # Save updated archive
-    with open(archive_path, "w") as f:
-        json.dump(archived_keys, f, indent=4)
+def load_current_public_key(recipient_email):
+    """Load recipient's RSA public key from file."""
+    safe_email = recipient_email.replace("@", "_at_").replace(".", "_dot_")
+    update_public_key_store(recipient_email)
+    try:
+        with open(f"./data/{safe_email}/rsa_keypair.json", "r") as f:
+            key_data = json.load(f)
+        public_pem = base64.b64decode(key_data["public_key"])
+        public_key = serialization.load_pem_public_key(public_pem)
+        return public_key
+    except Exception as e:
+        log_action(recipient_email, "load_public_key", f"failed: {str(e)}")
+        raise
 
 def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None, mode="create") -> dict:
-    """Generate RSA key pair with dual encryption (passphrase + recovery code)."""
+    """Generate RSA key pair with 90-day expiration, replacing any existing key."""
     safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-    key_path = f"./data/{safe_email}/rsa_keypair.json"
-    os.makedirs(f"./data/{safe_email}", exist_ok=True)
+    key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
+    key_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Check if a key pair already exists
-    current_key_data = None
+    # Check if a key pair exists and handle mode
     try:
         with open(key_path, "r") as f:
             current_key_data = json.load(f)
+            time_now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
             if mode == "extend":
-                current_key_data["renew"] = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat()
-                current_key_data["expires"] = (datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")) + timedelta(days=90)).isoformat()
+                current_key_data["renew"] = time_now.isoformat()
+                current_key_data["expires"] = (time_now + timedelta(days=90)).isoformat()
                 current_key_data["status"] = "in used"
                 with open(key_path, "w") as f:
                     json.dump(current_key_data, f, indent=4)
-                return current_key_data  # Return existing key if not expired
-            elif mode == "renew":
-                # Archive expired key
-                if(datetime.fromisoformat(current_key_data["expires"]) > datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))):
-                    current_key_data["status"] = "revoked"
-                else:
-                    current_key_data["status"] = "expired"
-                    archive_old_key(email, current_key_data)
+                update_public_key_store(email)
+                log_action(email, "generate_rsa_keypair", "success: Extended existing key")
+                return current_key_data
     except (FileNotFoundError, json.JSONDecodeError):
         pass  # No existing key, proceed to generate new one
 
@@ -95,7 +128,6 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
         recovery_iv = os.urandom(12)
         recovery_aesgcm = AESGCM(recovery_aes_key)
         priv_enc_recovery = recovery_aesgcm.encrypt(recovery_iv, priv_bytes, None)
-        
         recovery_enc_data = {
             "private_key_enc_recovery": base64.b64encode(priv_enc_recovery).decode(),
             "recovery_salt": base64.b64encode(recovery_salt).decode(),
@@ -103,13 +135,14 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
         }
 
     # Create key data dictionary
+    new_time = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
     key_data = {
         "public_key": base64.b64encode(pub_bytes).decode(),
         "private_key_enc": base64.b64encode(priv_enc).decode(),
         "salt": base64.b64encode(salt).decode(),
         "iv": base64.b64encode(iv).decode(),
-        "created": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat(),
-        "expires": (datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")) + timedelta(days=90)).isoformat(),
+        "created": new_time.isoformat(),
+        "expires": (new_time + timedelta(days=90)).isoformat(),
         "renew": "",
         "status": "in used",
         "key_size": 2048,
@@ -123,132 +156,121 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
     if recovery_enc_data:
         key_data.update(recovery_enc_data)
 
-    # Save new key pair
+    # Save new key pair, overwriting any existing key
     with open(key_path, "w") as f:
         json.dump(key_data, f, indent=4)
 
+    update_public_key_store(email)
+    log_action(email, "generate_rsa_keypair", "success: Generated new key")
     return key_data
 
-
-def update_public_key_store(email: str):
-    """Update public key store with current and archived keys for the user."""
-    os.makedirs(PUBLIC_KEY_DIR, exist_ok=True)
-    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-    public_key_path = f"{PUBLIC_KEY_DIR}/{safe_email}.json"
-
-    # Load current key
-    try:
-        with open(f"./data/{safe_email}/rsa_keypair.json", "r") as f:
-            key_data = json.load(f)
-            public_keys = [{
-                "public_key": key_data["public_key"],
-                "created": key_data["created"],
-                "expires": key_data["expires"],
-                "status": key_data["status"],
-                "email": email
-            }]
-    except (FileNotFoundError, json.JSONDecodeError):
-        public_keys = []
-
-    # Load archived keys
-    try:
-        with open(f"./data/{safe_email}/archived_keys.json", "r") as f:
-            archived_keys = json.load(f)
-            for key_data in archived_keys:
-                public_keys.append({
-                    "public_key": key_data["public_key"],
-                    "created": key_data["created"],
-                    "expires": key_data["expires"],
-                    "status": key_data["status"],
-                    "email": email
-                })
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-
-    # Save to public key store
-    with open(public_key_path, "w") as f:
-        json.dump(public_keys, f, indent=4)
-
-def load_public_key_from_file(recipient_email):
-    """Load recipient's RSA public key from file."""
-    try:
-        with open(f"./data/{recipient_email}/rsa_keypair.json", "r") as f:
-            key_data = json.load(f)
-        public_pem = base64.b64decode(key_data["public_key"])
-        public_key = serialization.load_pem_public_key(public_pem)
-        return public_key
-    except Exception as e:
-        log_action(recipient_email, "load_public_key", f"failed: {str(e)}")
-        raise
-
 def get_private_key_for_decryption(email: str, passphrase: str, message_timestamp: str) -> object:
-    """Retrieve the appropriate private key for decrypting a message based on its timestamp."""
-    key_path = f"./data/{email}/rsa_keypair.json"
-    archive_path = f"./data/{email}/archived_keys.json"
+    """Retrieve the private key for decryption, validating against message timestamp."""
+    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+    key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
     message_time = datetime.fromisoformat(message_timestamp)
 
-    # Try current key first
     try:
         with open(key_path, "r") as f:
             key_data = json.load(f)
-            key_created = datetime.fromisoformat(key_data["created"])
-            key_expires = datetime.fromisoformat(key_data["expires"])
-            # Check if the key was valid at the time the message was created
-            if key_created <= message_time <= key_expires:
-                priv_enc = base64.b64decode(key_data["private_key_enc"])
-                salt = base64.b64decode(key_data["salt"])
-                iv = base64.b64decode(key_data["iv"])
-                aes_key = derive_key(passphrase, salt)
-                aesgcm = AESGCM(aes_key)
-                priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
-                return serialization.load_pem_private_key(priv_bytes, password=None)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError):
-        pass
+        key_created = datetime.fromisoformat(key_data["created"])
+        key_expires = datetime.fromisoformat(key_data["expires"])
+        # Check if the key was valid at the message timestamp
+        if key_created <= message_time <= key_expires:
+            priv_enc = base64.b64decode(key_data["private_key_enc"])
+            salt = base64.b64decode(key_data["salt"])
+            iv = base64.b64decode(key_data["iv"])
+            aes_key = derive_key(passphrase, salt)
+            aesgcm = AESGCM(aes_key)
+            priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
+            return serialization.load_pem_private_key(priv_bytes, password=None)
+        else:
+            log_action(email, "get_private_key_for_decryption", f"failed: Message timestamp {message_timestamp} not valid for current key")
+            raise ValueError("The file was encrypted with an old key and is no longer valid")
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+        log_action(email, "get_private_key_for_decryption", f"failed: {str(e)}")
+        raise ValueError("No valid private key found for the message's timestamp")
 
-    # Try archived keys
+def verify_signature(email: str, signature: bytes, data: bytes, message_timestamp: str) -> bool:
+    """Verify a signature, ensuring it was signed with the current key."""
+    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+    key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
+    message_time = datetime.fromisoformat(message_timestamp)
+
     try:
-        with open(archive_path, "r") as f:
-            archived_keys = json.load(f)
-            for key_data in archived_keys:
-                key_created = datetime.fromisoformat(key_data["created"])
-                key_expires = datetime.fromisoformat(key_data["expires"])
-                if key_created <= message_time <= key_expires:
-                    priv_enc = base64.b64decode(key_data["private_key_enc"])
-                    salt = base64.b64decode(key_data["salt"])
-                    iv = base64.b64decode(key_data["iv"])
-                    aes_key = derive_key(passphrase, salt)
-                    aesgcm = AESGCM(aes_key)
-                    priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
-                    return serialization.load_pem_private_key(priv_bytes, password=None)
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+        with open(key_path, "r") as f:
+            key_data = json.load(f)
+        key_created = datetime.fromisoformat(key_data["created"])
+        key_expires = datetime.fromisoformat(key_data["expires"])
+        # Check if the key was valid at the message timestamp
+        if key_created <= message_time <= key_expires:
+            public_pem = base64.b64decode(key_data["public_key"])
+            public_key = serialization.load_pem_public_key(public_pem)
+            public_key.verify(
+                signature,
+                data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+            log_action(email, "verify_signature", "success: Signature verified")
+            return True
+        else:
+            log_action(email, "verify_signature", f"failed: Message timestamp {message_timestamp} not valid for current key")
+            raise ValueError("The file was signed with an old key and is no longer valid")
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+        log_action(email, "verify_signature", f"failed: {str(e)}")
+        raise ValueError("No valid public key found for the message's timestamp")
 
-    raise ValueError("No valid private key found for the message's timestamp")
-
-def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> object:
+def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tuple[bool, object]:
     """Decrypt the user's current RSA private key using recovery code."""
     safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-    key_path = f"./data/{safe_email}/rsa_keypair.json"
+    key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
     try:
         with open(key_path, "r") as f:
             key_data = json.load(f)
-        
-        # Check if recovery encryption is available
+
         if "private_key_enc_recovery" not in key_data:
             raise ValueError("Recovery decryption not available for this key")
-        
+
         priv_enc = base64.b64decode(key_data["private_key_enc_recovery"])
         salt = base64.b64decode(key_data["recovery_salt"])
         iv = base64.b64decode(key_data["recovery_iv"])
-        
-        # Derive the AES key using the recovery code and stored salt
+
         aes_key = derive_key(recovery_code, salt)
         aesgcm = AESGCM(aes_key)
         priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
-        
-        return serialization.load_pem_private_key(priv_bytes, password=None)
+
+        log_action(email, "decrypt_user_private_key_with_recovery", "success")
+        return True, serialization.load_pem_private_key(priv_bytes, password=None)
+    except (FileNotFoundError, json.JSONDecodeError):
+        log_action(email, "decrypt_user_private_key_with_recovery", "failed: Key file not found or invalid")
+        return False, None
     except Exception as e:
+        log_action(email, "decrypt_user_private_key_with_recovery", f"failed: {str(e)}")
         raise ValueError(f"Failed to decrypt private key with recovery code: {str(e)}")
 
-if __name__ == "__main__":
-    generate_rsa_keypair("test@gmail", "test")
+def store_new_public_key_from_qr(safe_email: str, key_data: dict) -> bool:
+    """Store a new public key from a QR code if it's not already in the store."""
+    public_key_path = PUBLIC_KEY_DIR / f"{safe_email}.json"
+    PUBLIC_KEY_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Check if key already exists
+    try:
+        with open(public_key_path, "r") as f:
+            existing_key = json.load(f)
+        if existing_key["public_key"] == key_data["public_key"]:
+            log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),
+                      "store_new_public_key_from_qr", "failed: Key already exists")
+            return False
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    # Store new key
+    with open(public_key_path, "w") as f:
+        json.dump(key_data, f, indent=4)
+    log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),
+               "store_new_public_key_from_qr", "success: Stored new public key")
+    return True
