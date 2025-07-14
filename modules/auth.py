@@ -105,11 +105,6 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
         storage_dir.mkdir(parents=True, exist_ok=True)
         public_keys_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create empty JSON files
-        (user_dir / "rsa_keypair.json").write_text("")
-        (user_dir / "archived_keys.json").write_text("")
-        (public_keys_dir / f"{safe_email}.json").write_text("")
-
         log_action(email, "sign_up", "success")
         return True, "Đăng ký thành công", recovery_code
 

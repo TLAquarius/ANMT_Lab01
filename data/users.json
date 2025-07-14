@@ -1,0 +1,34 @@
+[
+    {
+        "email": "j@g.com",
+        "full_name": "j",
+        "dob": "12/12/2004",
+        "phone": "1",
+        "address": "1",
+        "hashed_passphrase": "bClLjUEWZfNV/wc2Mo9bWvt8VVlF/SWt46mK5Ph/Vn8=",
+        "salt": "eJHDV1V9lUIZgBDB6qBbXg==",
+        "role": "user",
+        "status": "unlocked",
+        "totp_secret": "5VHU72YKLSMEUYSUUAMVZRNJ7YCQZJMU",
+        "failed_attempts": 0,
+        "lockout_until": null,
+        "recovery_code_hash": "2FjNd4+ol/JGeJVpno6arBwQGLgSU1Bd5Bx3Mkgp8I0=",
+        "recovery_code_salt": "xFDPPpUl3HUrk7PyqsAYcg=="
+    },
+    {
+        "email": "t@g.com",
+        "full_name": "t",
+        "dob": "12/12/2004",
+        "phone": "1",
+        "address": "1",
+        "hashed_passphrase": "WAjIZ6tGwhRwF8K0dgHmvTS0fbTx4oXec70h13688jE=",
+        "salt": "6clhOE3E8rFWLHo8liW9GQ==",
+        "role": "user",
+        "status": "unlocked",
+        "totp_secret": "2245LZ6WELN6CMEO4MAASXRTU5NNM6T7",
+        "failed_attempts": 0,
+        "lockout_until": null,
+        "recovery_code_hash": "M5jYwwEDVhvosZioHnUFMai8bcUUKuyp7P5LggEiwv0=",
+        "recovery_code_salt": "Q5FCuMG0rLg5Cd/TMitfRA=="
+    }
+]

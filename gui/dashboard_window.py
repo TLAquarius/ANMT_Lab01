@@ -10,6 +10,7 @@ from modules.rsa_keys import generate_rsa_keypair, update_key_status, update_pub
 from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
+from modules.file_crypto import encrypt_file_with_metadata, decrypt_file
 from gui.key_status_ui import KeyStorageWindow
 
 class DashboardWindow:
@@ -22,7 +23,7 @@ class DashboardWindow:
         self.root.grab_set()
 
         self.min_width = 400
-        self.min_height = 600
+        self.min_height = 700  # Increased to accommodate new buttons
 
         self.root.configure(padx=20, pady=20)
 
@@ -41,6 +42,8 @@ class DashboardWindow:
         tk.Button(root, text="Generate Public Key QR Code", command=self.generate_qr_code).pack(pady=10)
         tk.Button(root, text="Read Public Key QR Code", command=self.read_qr_code).pack(pady=10)
         tk.Button(root, text="Search Public Key", command=self.search_public_key).pack(pady=10)
+        tk.Button(root, text="Encrypt File", command=self.encrypt_file).pack(pady=10)
+        tk.Button(root, text="Decrypt File", command=self.decrypt_file).pack(pady=10)
         tk.Button(root, text="Logout", command=self.logout).pack(pady=10)
 
         self.adjust_window_size()
@@ -365,10 +368,10 @@ class DashboardWindow:
                 result_window.grab_set()
 
                 tk.Label(result_window, text=f"Email: {search_email}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Created: {datetime.fromisoformat(result['created']).strftime('%Y-%m-%d %H:%M:%S')}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Expires: {datetime.fromisoformat(result['expires']).strftime('%Y-%m-%d %H:%M:%S')}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Created: {datetime.fromisoformat(result['created']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Expires: {datetime.fromisoformat(result['expires']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
                 tk.Label(result_window, text=f"Status: {result['status']}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Public Key: {result['public_key']}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Public Key: {result['public_key'][:20]}...", anchor="w").pack(fill="x", pady=5)
                 tk.Button(result_window, text="Close", command=result_window.destroy).pack(pady=10)
 
                 # Adjust window size
@@ -393,6 +396,143 @@ class DashboardWindow:
         x = (search_window.winfo_screenwidth() - req_width) // 2
         y = (search_window.winfo_screenheight() - req_height) // 2
         search_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+    def encrypt_file(self):
+        """Encrypt a file for a recipient with options for single or split format."""
+        encrypt_window = tk.Toplevel(self.root)
+        encrypt_window.title("Encrypt File")
+        encrypt_window.transient(self.root)
+        encrypt_window.grab_set()
+
+        tk.Label(encrypt_window, text="Select File to Encrypt").pack(pady=5)
+        file_entry = tk.Entry(encrypt_window, width=50)
+        file_entry.pack(pady=5)
+        tk.Button(encrypt_window, text="Browse", command=lambda: file_entry.insert(0, filedialog.askopenfilename())).pack(pady=5)
+
+        tk.Label(encrypt_window, text="Recipient Email").pack(pady=5)
+        email_entry = tk.Entry(encrypt_window)
+        email_entry.pack(pady=5)
+
+        tk.Label(encrypt_window, text="Save Format").pack(pady=5)
+        split_key_var = tk.BooleanVar(value=False)
+        tk.Radiobutton(encrypt_window, text="Single .enc file", variable=split_key_var, value=False).pack()
+        tk.Radiobutton(encrypt_window, text="Separate .enc and .key files", variable=split_key_var, value=True).pack()
+
+        error_label = tk.Label(encrypt_window, text="", fg="red")
+        error_label.pack()
+
+        def perform_encryption():
+            input_path = file_entry.get().strip()
+            recipient_email = email_entry.get().strip()
+            split_key = split_key_var.get()
+
+            if not input_path or not recipient_email:
+                error_label.config(text="File and recipient email are required")
+                return
+
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, recipient_email):
+                error_label.config(text="Invalid recipient email format")
+                return
+
+            try:
+                enc_path, key_path = encrypt_file_with_metadata(input_path, recipient_email, self.user["email"], split_key)
+                message = f"File encrypted successfully: {enc_path}"
+                if key_path:
+                    message += f"\nKey file: {key_path}"
+                messagebox.showinfo("Success", message)
+                encrypt_window.destroy()
+            except ValueError as e:
+                error_label.config(text=str(e))
+            except Exception as e:
+                error_label.config(text=f"Encryption failed: {str(e)}")
+
+        button_frame = tk.Frame(encrypt_window)
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Encrypt", command=perform_encryption).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=encrypt_window.destroy).pack(side=tk.LEFT, padx=5)
+
+        encrypt_window.update_idletasks()
+        req_width = max(encrypt_window.winfo_reqwidth() + 40, 400)
+        req_height = max(encrypt_window.winfo_reqheight() + 40, 300)
+        x = (encrypt_window.winfo_screenwidth() - req_width) // 2
+        y = (encrypt_window.winfo_screenheight() - req_height) // 2
+        encrypt_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+    def decrypt_file(self):
+        """Decrypt a file from the user's storage folder."""
+        decrypt_window = tk.Toplevel(self.root)
+        decrypt_window.title("Decrypt File")
+        decrypt_window.transient(self.root)
+        decrypt_window.grab_set()
+
+        safe_email = self.user["email"].replace("@", "_at_").replace(".", "_dot_")
+        storage_dir = Path(f"data/{safe_email}/storage")
+
+        tk.Label(decrypt_window, text="Select Encrypted File (.enc)").pack(pady=5)
+        file_entry = tk.Entry(decrypt_window, width=50)
+        file_entry.pack(pady=5)
+        tk.Button(decrypt_window, text="Browse", command=lambda: file_entry.insert(0, filedialog.askopenfilename(
+            initialdir=storage_dir, filetypes=[("Encrypted Files", "*.enc"), ("All Files", "*.*")]
+        ))).pack(pady=5)
+
+        tk.Label(decrypt_window, text="Enter Passphrase").pack(pady=5)
+        passphrase_entry = tk.Entry(decrypt_window, show="*")
+        passphrase_entry.pack(pady=5)
+
+        error_label = tk.Label(decrypt_window, text="", fg="red")
+        error_label.pack()
+
+        def perform_decryption():
+            enc_path = file_entry.get().strip()
+            passphrase = passphrase_entry.get().strip()
+
+            if not enc_path:
+                error_label.config(text="Encrypted file is required")
+                return
+            if not passphrase:
+                error_label.config(text="Passphrase is required")
+                return
+
+            try:
+                output_path, metadata = decrypt_file(enc_path, passphrase, self.user["email"])
+                # Display results
+                result_window = tk.Toplevel(self.root)
+                result_window.title("Decryption Result")
+                result_window.transient(self.root)
+                result_window.grab_set()
+
+                tk.Label(result_window, text=f"Decrypted File: {output_path}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text="Metadata:", anchor="w").pack(fill="x", pady=5)
+                for key, value in metadata.items():
+                    tk.Label(result_window, text=f"{key}: {value}", anchor="w").pack(fill="x", pady=2)
+                tk.Button(result_window, text="Close", command=result_window.destroy).pack(pady=10)
+
+                result_window.update_idletasks()
+                req_width = max(result_window.winfo_reqwidth() + 40, 400)
+                req_height = max(result_window.winfo_reqheight() + 40, 300)
+                x = (result_window.winfo_screenwidth() - req_width) // 2
+                y = (result_window.winfo_screenheight() - req_height) // 2
+                result_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+                messagebox.showinfo("Success", f"File decrypted successfully: {output_path}")
+                decrypt_window.destroy()
+            except ValueError as e:
+                error_label.config(text=str(e))
+            except Exception as e:
+                error_label.config(text=f"Decryption failed: {str(e)}")
+
+        button_frame = tk.Frame(decrypt_window)
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Decrypt", command=perform_decryption).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=decrypt_window.destroy).pack(side=tk.LEFT, padx=5)
+
+        decrypt_window.update_idletasks()
+        req_width = max(decrypt_window.winfo_reqwidth() + 40, 400)
+        req_height = max(decrypt_window.winfo_reqheight() + 40, 300)
+        x = (decrypt_window.winfo_screenwidth() - req_width) // 2
+        y = (decrypt_window.winfo_screenheight() - req_height) // 2
+        decrypt_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
     def logout(self):
         self.main_window.enable_buttons()
