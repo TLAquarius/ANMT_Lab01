@@ -223,13 +223,11 @@ def get_private_key_for_decryption(email: str, passphrase: str, message_timestam
             priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
             return serialization.load_pem_private_key(priv_bytes, password=None)
         else:
-            log_action(email, "get_private_key_for_decryption",
-                       f"failed: Message timestamp {message_timestamp} not valid for current key")
-            raise ValueError("Tệp được mã hóa bằng khóa cũ và không còn hợp lệ")
+            log_action(email, "get_private_key_for_decryption", f"failed: Message timestamp {message_timestamp} not valid for current key")
+            raise ValueError("The file was encrypted with an old key and is no longer valid")
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
         log_action(email, "get_private_key_for_decryption", f"failed: {str(e)}")
-        raise ValueError("Không tìm thấy khóa riêng hợp lệ cho thời điểm của tệp")
-
+        raise ValueError("No valid private key found for the message's timestamp")
 
 def verify_signature(email: str, signature: bytes, data: bytes, message_timestamp: str) -> bool:
     """Verify a signature, ensuring it was signed with the current key."""
@@ -257,12 +255,11 @@ def verify_signature(email: str, signature: bytes, data: bytes, message_timestam
             log_action(email, "verify_signature", "success: Signature verified")
             return True
         else:
-            log_action(email, "verify_signature",
-                       f"failed: Message timestamp {message_timestamp} not valid for current key")
-            raise ValueError("Tệp được ký bằng khóa cũ và không còn hợp lệ")
+            log_action(email, "verify_signature", f"failed: Message timestamp {message_timestamp} not valid for current key")
+            raise ValueError("The file was signed with an old key and is no longer valid")
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
         log_action(email, "verify_signature", f"failed: {str(e)}")
-        raise ValueError("Không tìm thấy khóa công khai hợp lệ cho thời điểm của tệp")
+        raise ValueError("No valid public key found for the message's timestamp")
 
 
 def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tuple[bool, object, str]:
@@ -272,19 +269,18 @@ def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tu
     try:
         with open(key_path, "r") as f:
             key_data = json.load(f)
-        
-        # Check if recovery encryption is available
+
         if "private_key_enc_recovery" not in key_data:
             log_action(email, "decrypt_user_private_key_with_recovery", "failed: No recovery code associated with key")
             return False, None, "Khóa riêng không thể khôi phục vì không có recovery code lúc tạo key. Tạo khóa mới thành công"
         priv_enc = base64.b64decode(key_data["private_key_enc_recovery"])
         salt = base64.b64decode(key_data["recovery_salt"])
         iv = base64.b64decode(key_data["recovery_iv"])
-        
-        # Derive the AES key using the recovery code and stored salt
+
         aes_key = derive_key(recovery_code, salt)
         aesgcm = AESGCM(aes_key)
         priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
+
         log_action(email, "decrypt_user_private_key_with_recovery", "success")
         return True, serialization.load_pem_private_key(priv_bytes, password=None), "Khóa riêng được khôi phục thành công"
     except (FileNotFoundError, json.JSONDecodeError):
@@ -311,3 +307,46 @@ def store_new_public_key_from_qr(safe_email: str, key_data: dict) -> bool:
         json.dump(key_data, f, indent=4)
     log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),"store_new_public_key_from_qr", "success: Stored new public key")
     return True
+def get_active_private_key(email: str, passphrase: str) -> object:
+    """
+    Lấy khóa riêng đang hoạt động (chưa hết hạn) của người dùng để ký.
+    Ném ra ValueError nếu khóa đã hết hạn, không tìm thấy hoặc passphrase không chính xác.
+    """
+    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+    key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
+    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+
+    try:
+        with open(key_path, "r") as f:
+            key_data = json.load(f)
+
+        # Kiểm tra xem khóa có hợp lệ để ký không
+        key_expires = datetime.fromisoformat(key_data["expires"])
+        if now > key_expires:
+            log_action(email, "get_active_private_key", "failed: Key is expired")
+            raise ValueError("Khóa RSA của bạn đã hết hạn. Vui lòng tạo khóa mới.")
+
+        # Giải mã khóa riêng. Thao tác này sẽ thất bại nếu passphrase sai.
+        priv_enc = base64.b64decode(key_data["private_key_enc"])
+        salt = base64.b64decode(key_data["salt"])
+        iv = base64.b64decode(key_data["iv"])
+        aes_key = derive_key(passphrase, salt)
+        aesgcm = AESGCM(aes_key)
+        priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
+
+        log_action(email, "get_active_private_key", "success")
+        return serialization.load_pem_private_key(priv_bytes, password=None)
+
+    except (FileNotFoundError, json.JSONDecodeError):
+        log_action(email, "get_active_private_key", "failed: Key file not found or invalid")
+        raise ValueError("Không tìm thấy tệp khóa RSA. Vui lòng tạo khóa trước.")
+    except ValueError as e:
+        # Bắt lỗi từ aesgcm.decrypt (passphrase sai) hoặc lỗi hết hạn ở trên
+        if "decryption" in str(e).lower() or "ciphertext" in str(e).lower():
+            log_action(email, "get_active_private_key", "failed: Invalid passphrase")
+            raise ValueError("Passphrase không hợp lệ.")
+        log_action(email, "get_active_private_key", f"failed: {str(e)}")
+        raise e  # Ném lại lỗi gốc (ví dụ: thông báo hết hạn)
+    except Exception as e:
+        log_action(email, "get_active_private_key", f"failed: Unexpected error {str(e)}")
+        raise ValueError(f"Lỗi không xác định khi truy xuất khóa: {str(e)}")

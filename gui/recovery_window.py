@@ -9,17 +9,20 @@ import base64
 
 class RecoveryWindow:
     def __init__(self, root, main_window):
-        self.root = root
-        self.main_window = main_window
-        self.root.title("Đặt lại Passphrase")
-        self.root.transient(main_window.root)
+        self.root = root  # Toplevel window
+        self.main_window = main_window  # MainWindow instance
+        self.root.title("Reset Passphrase")
+        self.root.transient(main_window.root)  # Use main_window.root for transient
         self.root.grab_set()
 
+        # Minimum window size
         self.min_width = 400
-        self.min_height = 550
+        self.min_height = 500
 
+        # Add padding
         self.root.configure(padx=20, pady=20)
 
+        # Labels and entries
         tk.Label(root, text="Email").pack(pady=5)
         self.email_entry = tk.Entry(root)
         self.email_entry.pack(pady=5)
@@ -73,6 +76,7 @@ class RecoveryWindow:
             self.error_label.config(text="Recovery code phải dài 16 ký tự")
             return
 
+        # Validate new passphrase
         valid, error = validate_passphrase(new_passphrase)
         if not valid:
             self.error_label.config(text=error)
