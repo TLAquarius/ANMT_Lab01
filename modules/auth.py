@@ -9,7 +9,6 @@ import qrcode
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.rsa_keys import generate_rsa_keypair, update_public_key_store, decrypt_user_private_key_with_recovery, derive_key
 from pathlib import Path
@@ -234,52 +233,53 @@ def reset_passphrase(email: str, recovery_code: str, new_passphrase: str) -> tup
             return False, error
 
         # Decrypt private key with recovery code
-        private_key = decrypt_user_private_key_with_recovery(email, recovery_code)
-
-        # Re-encrypt private key with new passphrase
+        success, private_key = decrypt_user_private_key_with_recovery(email, recovery_code)
         new_salt = os.urandom(16)
         new_hashed_passphrase = derive_key(new_passphrase, new_salt)
-        aes_key = derive_key(new_passphrase, new_salt)
-        iv = os.urandom(12)
-        aesgcm = AESGCM(aes_key)
-        priv_bytes = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-        priv_enc = aesgcm.encrypt(iv, priv_bytes, None)
+        if success:
+            # Re-encrypt private key with new passphrase
+            if private_key:
+                aes_key = derive_key(new_passphrase, new_salt)
+                iv = os.urandom(12)
+                aesgcm = AESGCM(aes_key)
+                priv_bytes = private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption()
+                )
+                priv_enc = aesgcm.encrypt(iv, priv_bytes, None)
 
-        # Re-encrypt with new recovery code for future resets
-        new_recovery_salt = os.urandom(16)
-        recovery_aes_key = derive_key(recovery_code, new_recovery_salt)
-        recovery_iv = os.urandom(12)
-        recovery_aesgcm = AESGCM(recovery_aes_key)
-        priv_enc_recovery = recovery_aesgcm.encrypt(recovery_iv, priv_bytes, None)
+                # Re-encrypt with new recovery code for future resets
+                new_recovery_salt = os.urandom(16)
+                recovery_aes_key = derive_key(recovery_code, new_recovery_salt)
+                recovery_iv = os.urandom(12)
+                recovery_aesgcm = AESGCM(recovery_aes_key)
+                priv_enc_recovery = recovery_aesgcm.encrypt(recovery_iv, priv_bytes, None)
 
-        # Update rsa_keypair.json
-        safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-        key_path = f"./data/{safe_email}/rsa_keypair.json"
-        with open(key_path, "r") as f:
-            key_data = json.load(f)
-        key_data.update({
-            "private_key_enc": base64.b64encode(priv_enc).decode(),
-            "salt": base64.b64encode(new_salt).decode(),
-            "iv": base64.b64encode(iv).decode(),
-            "private_key_enc_recovery": base64.b64encode(priv_enc_recovery).decode(),
-            "recovery_salt": base64.b64encode(new_recovery_salt).decode(),
-            "recovery_iv": base64.b64encode(recovery_iv).decode()
-        })
-        with open(key_path, "w") as f:
-            json.dump(key_data, f, indent=4)
+                # Update rsa_keypair.json
+                safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+                key_path = f"./data/{safe_email}/rsa_keypair.json"
+                with open(key_path, "r") as f:
+                    key_data = json.load(f)
+                key_data.update({
+                    "private_key_enc": base64.b64encode(priv_enc).decode(),
+                    "salt": base64.b64encode(new_salt).decode(),
+                    "iv": base64.b64encode(iv).decode(),
+                    "private_key_enc_recovery": base64.b64encode(priv_enc_recovery).decode(),
+                    "recovery_salt": base64.b64encode(new_recovery_salt).decode(),
+                    "recovery_iv": base64.b64encode(recovery_iv).decode()
+                })
+                with open(key_path, "w") as f:
+                    json.dump(key_data, f, indent=4)
 
-        # Update users.json with new passphrase hash and salt
-        user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
-        user["salt"] = base64.b64encode(new_salt).decode()
-        with open(USERS_FILE, "w") as f:
-            json.dump(users, f, indent=4)
+            # Update users.json with new passphrase hash and salt
+            user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
+            user["salt"] = base64.b64encode(new_salt).decode()
+            with open(USERS_FILE, "w") as f:
+                json.dump(users, f, indent=4)
 
-        log_action(email, "reset_passphrase", "success")
-        return True, "Passphrase reset thành công"
+            log_action(email, "reset_passphrase", "success")
+            return True, "Passphrase reset thành công"
 
     except Exception as e:
         log_action(email, "reset_passphrase", f"failed: {str(e)}")

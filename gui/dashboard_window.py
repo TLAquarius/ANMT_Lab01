@@ -1,4 +1,3 @@
-from gui.key_status_ui import KeyStorageWindow
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
 from datetime import datetime
@@ -10,6 +9,8 @@ from PIL import Image, ImageTk
 from modules.rsa_keys import generate_rsa_keypair, update_key_status, update_public_key_store
 from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
+from modules.pubkey_search import search_public_key
+from gui.key_status_ui import KeyStorageWindow
 
 class DashboardWindow:
     def __init__(self, root, main_window, user):
@@ -39,6 +40,7 @@ class DashboardWindow:
         tk.Button(root, text="View Keys", command=self.view_keys).pack(pady=10)
         tk.Button(root, text="Generate Public Key QR Code", command=self.generate_qr_code).pack(pady=10)
         tk.Button(root, text="Read Public Key QR Code", command=self.read_qr_code).pack(pady=10)
+        tk.Button(root, text="Search Public Key", command=self.search_public_key).pack(pady=10)
         tk.Button(root, text="Logout", command=self.logout).pack(pady=10)
 
         self.adjust_window_size()
@@ -325,6 +327,72 @@ class DashboardWindow:
             messagebox.showerror("Error", str(e))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to read QR code: {str(e)}")
+
+    def search_public_key(self):
+        """Search for another user's public key by email and display its information."""
+        search_window = tk.Toplevel(self.root)
+        search_window.title("Search Public Key")
+        search_window.transient(self.root)
+        search_window.grab_set()
+
+        tk.Label(search_window, text="Enter Email to Search").pack(pady=5)
+        email_entry = tk.Entry(search_window)
+        email_entry.pack(pady=5)
+        error_label = tk.Label(search_window, text="", fg="red")
+        error_label.pack()
+
+        def perform_search():
+            search_email = email_entry.get().strip()
+            if not search_email:
+                error_label.config(text="Email is required")
+                return
+
+            try:
+                result, message, similar_emails = search_public_key(self.user["email"], search_email)
+
+                if result is None:
+                    if similar_emails:
+                        similar_emails_str = "\n".join(similar_emails)
+                        messagebox.showinfo("Not Found", f"{message}\nSimilar emails:\n{similar_emails_str}")
+                    else:
+                        messagebox.showinfo("Not Found", message)
+                    return
+
+                # Display key information
+                result_window = tk.Toplevel(self.root)
+                result_window.title(f"Public Key - {search_email}")
+                result_window.transient(self.root)
+                result_window.grab_set()
+
+                tk.Label(result_window, text=f"Email: {search_email}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Created: {datetime.fromisoformat(result['created']).strftime('%Y-%m-%d %H:%M:%S')}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Expires: {datetime.fromisoformat(result['expires']).strftime('%Y-%m-%d %H:%M:%S')}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Status: {result['status']}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Public Key: {result['public_key']}", anchor="w").pack(fill="x", pady=5)
+                tk.Button(result_window, text="Close", command=result_window.destroy).pack(pady=10)
+
+                # Adjust window size
+                result_window.update_idletasks()
+                req_width = max(result_window.winfo_reqwidth() + 40, 400)
+                req_height = max(result_window.winfo_reqheight() + 40, 300)
+                x = (result_window.winfo_screenwidth() - req_width) // 2
+                y = (result_window.winfo_screenheight() - req_height) // 2
+                result_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to search public key: {str(e)}")
+
+        button_frame = tk.Frame(search_window)
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Search", command=perform_search).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=search_window.destroy).pack(side=tk.LEFT, padx=5)
+
+        search_window.update_idletasks()
+        req_width = search_window.winfo_reqwidth() + 40
+        req_height = search_window.winfo_reqheight() + 40
+        x = (search_window.winfo_screenwidth() - req_width) // 2
+        y = (search_window.winfo_screenheight() - req_height) // 2
+        search_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
     def logout(self):
         self.main_window.enable_buttons()

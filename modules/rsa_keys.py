@@ -271,6 +271,8 @@ def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> ob
         aesgcm = AESGCM(aes_key)
         priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
 
-        return serialization.load_pem_private_key(priv_bytes, password=None)
+        return True, serialization.load_pem_private_key(priv_bytes, password=None)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return True, None
     except Exception as e:
         raise ValueError(f"Failed to decrypt private key with recovery code: {str(e)}")

@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import re
 from datetime import datetime
 from modules.auth import sign_up
@@ -116,6 +116,30 @@ class SignupWindow:
         pattern = r'^\+?\d+([-.\s]?\d+)*$'
         return bool(re.match(pattern, phone))
 
+    def show_copyable_info(self, title, message, recovery_code):
+        window = tk.Toplevel()
+        window.title(title)
+        window.resizable(False, False)
+        window.grab_set()  # Modal
+
+        ttk.Label(window, text=message).pack(padx=10, pady=(10, 0))
+
+        entry = tk.Entry(window, width=40)
+        entry.insert(0, recovery_code)
+        entry.configure(state='readonly')  # Allow copy but not edit
+        entry.pack(padx=10, pady=5)
+        entry.focus()
+        entry.selection_range(0, tk.END)  # Auto-select
+
+        ttk.Button(window, text="OK", command=window.destroy).pack(pady=(0, 10))
+
+        # Optional: Center window
+        window.update_idletasks()
+        w, h = window.winfo_width(), window.winfo_height()
+        x = (window.winfo_screenwidth() // 2) - (w // 2)
+        y = (window.winfo_screenheight() // 2) - (h // 2)
+        window.geometry(f'{w}x{h}+{x}+{y}')
+
     def submit(self):
         email = self.email_entry.get()
         full_name = self.name_entry.get()
@@ -157,7 +181,7 @@ class SignupWindow:
 
         success, message, recovery_code = sign_up(email, full_name, dob, phone, address, passphrase)
         if success:
-            messagebox.showinfo("Success", f"{message}\nMã khôi phục: {recovery_code}\nVui lòng ghi nhớ mã này")
+            self.show_copyable_info("Success", f"{message}\nMã khôi phục (Vui lòng ghi nhớ mã này): ",recovery_code)
             self.go_back()
         else:
             messagebox.showerror("Error", message)
