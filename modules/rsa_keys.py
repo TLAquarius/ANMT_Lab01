@@ -274,3 +274,46 @@ def store_new_public_key_from_qr(safe_email: str, key_data: dict) -> bool:
     log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),
                "store_new_public_key_from_qr", "success: Stored new public key")
     return True
+def get_active_private_key(email: str, passphrase: str) -> object:
+    """
+    Lấy khóa riêng đang hoạt động (chưa hết hạn) của người dùng để ký.
+    Ném ra ValueError nếu khóa đã hết hạn, không tìm thấy hoặc passphrase không chính xác.
+    """
+    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+    key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
+    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+
+    try:
+        with open(key_path, "r") as f:
+            key_data = json.load(f)
+
+        # Kiểm tra xem khóa có hợp lệ để ký không
+        key_expires = datetime.fromisoformat(key_data["expires"])
+        if now > key_expires:
+            log_action(email, "get_active_private_key", "failed: Key is expired")
+            raise ValueError("Khóa RSA của bạn đã hết hạn. Vui lòng tạo khóa mới.")
+
+        # Giải mã khóa riêng. Thao tác này sẽ thất bại nếu passphrase sai.
+        priv_enc = base64.b64decode(key_data["private_key_enc"])
+        salt = base64.b64decode(key_data["salt"])
+        iv = base64.b64decode(key_data["iv"])
+        aes_key = derive_key(passphrase, salt)
+        aesgcm = AESGCM(aes_key)
+        priv_bytes = aesgcm.decrypt(iv, priv_enc, None)
+
+        log_action(email, "get_active_private_key", "success")
+        return serialization.load_pem_private_key(priv_bytes, password=None)
+
+    except (FileNotFoundError, json.JSONDecodeError):
+        log_action(email, "get_active_private_key", "failed: Key file not found or invalid")
+        raise ValueError("Không tìm thấy tệp khóa RSA. Vui lòng tạo khóa trước.")
+    except ValueError as e:
+        # Bắt lỗi từ aesgcm.decrypt (passphrase sai) hoặc lỗi hết hạn ở trên
+        if "decryption" in str(e).lower() or "ciphertext" in str(e).lower():
+            log_action(email, "get_active_private_key", "failed: Invalid passphrase")
+            raise ValueError("Passphrase không hợp lệ.")
+        log_action(email, "get_active_private_key", f"failed: {str(e)}")
+        raise e  # Ném lại lỗi gốc (ví dụ: thông báo hết hạn)
+    except Exception as e:
+        log_action(email, "get_active_private_key", f"failed: Unexpected error {str(e)}")
+        raise ValueError(f"Lỗi không xác định khi truy xuất khóa: {str(e)}")
