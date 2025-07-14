@@ -1,0 +1,18 @@
+[
+    {
+        "email": "tamphapthuat@gmail.com",
+        "full_name": "Tam",
+        "dob": "05/07/2004",
+        "phone": "0932131",
+        "address": "t\u00e2ttras",
+        "hashed_passphrase": "5McKHONQc2w5LLJSK+VI7WJ7KG9fBjmrGr/LfltARt4=",
+        "salt": "LabQfGxL8LK8Qlf9bMzyKQ==",
+        "role": "admin",
+        "status": "unlocked",
+        "totp_secret": "6WTTCCM37DHMNIFOOXDSSROL4R3AOUSY",
+        "failed_attempts": 0,
+        "lockout_until": null,
+        "recovery_code_hash": "yKC6RKTYj9jACArtCOsUByDmjT52TROpF3+vRKj2ke4=",
+        "recovery_code_salt": "QOjL2HlFu+KSYN5+K9jM0Q=="
+    }
+]
