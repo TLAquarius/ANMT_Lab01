@@ -3,12 +3,12 @@ import json
 import base64
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from pathlib import Path
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.logger import log_action
-from pathlib import Path
 
 PUBLIC_KEY_DIR = Path("./data/public_keys")
 
@@ -230,7 +230,7 @@ def get_private_key_for_decryption(email: str, passphrase: str, message_timestam
         raise ValueError("No valid private key found for the message's timestamp")
 
 def verify_signature(email: str, signature: bytes, data: bytes, message_timestamp: str) -> bool:
-    """Verify a signature, ensuring it was signed with the current key."""
+    """Verify a signature for a specific email, ensuring key validity."""
     safe_email = email.replace("@", "_at_").replace(".", "_dot_")
     key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
     message_time = datetime.fromisoformat(message_timestamp)
@@ -270,6 +270,7 @@ def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tu
         with open(key_path, "r") as f:
             key_data = json.load(f)
 
+        # Check if recovery encryption is available
         if "private_key_enc_recovery" not in key_data:
             log_action(email, "decrypt_user_private_key_with_recovery", "failed: No recovery code associated with key")
             return False, None, "Khóa riêng không thể khôi phục vì không có recovery code lúc tạo key. Tạo khóa mới thành công"
@@ -277,6 +278,7 @@ def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tu
         salt = base64.b64decode(key_data["recovery_salt"])
         iv = base64.b64decode(key_data["recovery_iv"])
 
+        # Derive the AES key using the recovery code and stored salt
         aes_key = derive_key(recovery_code, salt)
         aesgcm = AESGCM(aes_key)
         priv_bytes = aesgcm.decrypt(iv, priv_enc, None)

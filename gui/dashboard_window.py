@@ -11,8 +11,8 @@ from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
 from modules.file_crypto import encrypt_file_with_metadata, decrypt_file
+from modules.file_sign import sign_file, verify_signature
 from modules.auth import verify_passphrase, validate_passphrase
-from modules.file_sign import sign_file as sign_file_logic, verify_signature as verify_signature_logic
 from gui.key_status_ui import KeyStorageWindow
 from modules.admin import is_admin
 from gui.admin_panel import AdminWindow
@@ -59,12 +59,8 @@ class DashboardWindow:
         tk.Button(root, text="Search Public Key", command=self.search_public_key).pack(pady=10)
         tk.Button(root, text="Encrypt File", command=self.encrypt_file).pack(pady=10)
         tk.Button(root, text="Decrypt File", command=self.decrypt_file).pack(pady=10)
-
-        # --- NEW BUTTONS FOR SIGNING AND VERIFYING ---
         tk.Button(root, text="File Sign", command=self.sign_file).pack(pady=10)
         tk.Button(root, text="Signature Verify", command=self.verify_signature).pack(pady=10)
-        # --- END OF NEW BUTTONS ---
-
         tk.Button(root, text="Logout", command=self.logout).pack(pady=10)
 
         self.adjust_window_size()
@@ -107,7 +103,6 @@ class DashboardWindow:
 
     def open_admin(self):
         """Open the admin window."""
-        #self.main_window.disable_buttons()
         admin_window = tk.Toplevel(self.main_window.root)
         admin_window.transient(self.root)
         admin_window.grab_set()
@@ -376,8 +371,7 @@ class DashboardWindow:
             KeyStorageWindow(key_window, self, safe_email)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             log_action(self.email, "view_keys", f"failed: {str(e)}")
-        key_window = tk.Toplevel(self.root)
-        KeyStorageWindow(key_window, self, safe_email)
+            messagebox.showerror("Error", "No key found")
 
     def generate_qr_code(self):
         safe_email = self.email.replace("@", "_at_").replace(".", "_dot_")
@@ -662,7 +656,7 @@ class DashboardWindow:
                 return
 
             try:
-                success, message, sig_path = sign_file_logic(file_path, self.email, passphrase)
+                success, message, sig_path = sign_file(file_path, self.email, passphrase)
                 if success:
                     messagebox.showinfo("Thành công", message, parent=sign_window)
                     sign_window.destroy()
@@ -711,7 +705,7 @@ class DashboardWindow:
 
             try:
                 # Pass current user's email for logging purposes
-                result = verify_signature_logic(file_path, sig_path, self.email)
+                result = verify_signature(file_path, sig_path, self.email)
 
                 if result.get("valid"):
                     message = (f"Xác thực thành công!\n\n"

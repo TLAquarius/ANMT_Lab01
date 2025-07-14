@@ -149,7 +149,7 @@ class LoginWindow:
         """Open the dashboard window and close the login window."""
         self.main_window.enable_buttons()
         dashboard_window = tk.Toplevel(self.main_window.root)
-        DashboardWindow(dashboard_window, self.main_window, self.user)
+        DashboardWindow(dashboard_window, self.main_window, self.user['email'])
         self.root.destroy()
 
     def go_back(self):
