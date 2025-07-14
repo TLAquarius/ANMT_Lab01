@@ -62,9 +62,7 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
             "sender_email": sender_email,
             "recipient_email": recipient_email,
             "file_name": input_file.name,
-            "timestamp": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat(),
-            "encryption_algorithm": "AES-256-GCM",
-            "block_size": BLOCK_SIZE
+            "timestamp": datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat()
         }
 
         # Encrypt metadata

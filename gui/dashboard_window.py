@@ -1,16 +1,17 @@
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
 from datetime import datetime
-import re
+import re, base64
 import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageTk
-from modules.rsa_keys import generate_rsa_keypair, update_key_status, update_public_key_store
+from modules.rsa_keys import generate_rsa_keypair, update_key_status, update_public_key_store, derive_key
 from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
 from modules.file_crypto import encrypt_file_with_metadata, decrypt_file
+from modules.auth import verify_passphrase, validate_passphrase
 from gui.key_status_ui import KeyStorageWindow
 
 class DashboardWindow:
@@ -23,28 +24,28 @@ class DashboardWindow:
         self.root.grab_set()
 
         self.min_width = 400
-        self.min_height = 700  # Increased to accommodate new buttons
+        self.min_height = 700  # Adjusted for removed button
 
         self.root.configure(padx=20, pady=20)
 
-        tk.Label(root, text=f"Name: {user['full_name']}", anchor="w").pack(fill="x", pady=2)
+        tk.Label(root, text=f"Tên: {user['full_name']}", anchor="w").pack(fill="x", pady=2)
         tk.Label(root, text=f"Email: {user['email']}", anchor="w").pack(fill="x", pady=2)
-        tk.Label(root, text=f"Phone: {user['phone']}", anchor="w").pack(fill="x", pady=2)
-        tk.Label(root, text=f"Date of Birth: {user['dob']}", anchor="w").pack(fill="x", pady=2)
-        tk.Label(root, text=f"Address: {user['address']}", anchor="w").pack(fill="x", pady=2)
+        tk.Label(root, text=f"Số điện thoại: {user['phone']}", anchor="w").pack(fill="x", pady=2)
+        tk.Label(root, text=f"Ngày sinh: {user['dob']}", anchor="w").pack(fill="x", pady=2)
+        tk.Label(root, text=f"Địa chỉ: {user['address']}", anchor="w").pack(fill="x", pady=2)
 
         tk.Frame(root, height=2, bd=1, relief="sunken").pack(fill="x", pady=10)
 
-        tk.Button(root, text="Update Information", command=self.open_update_info).pack(pady=10)
-        tk.Button(root, text="Create New RSA Keys", command=self.create_new_keys).pack(pady=10)
-        tk.Button(root, text="Extend RSA Key Expiration", command=self.extend_keys).pack(pady=10)
-        tk.Button(root, text="View Keys", command=self.view_keys).pack(pady=10)
-        tk.Button(root, text="Generate Public Key QR Code", command=self.generate_qr_code).pack(pady=10)
-        tk.Button(root, text="Read Public Key QR Code", command=self.read_qr_code).pack(pady=10)
-        tk.Button(root, text="Search Public Key", command=self.search_public_key).pack(pady=10)
-        tk.Button(root, text="Encrypt File", command=self.encrypt_file).pack(pady=10)
-        tk.Button(root, text="Decrypt File", command=self.decrypt_file).pack(pady=10)
-        tk.Button(root, text="Logout", command=self.logout).pack(pady=10)
+        tk.Button(root, text="Cập nhật thông tin", command=self.open_update_info).pack(pady=10)
+        tk.Button(root, text="Tạo mới RSA keys", command=self.create_new_keys).pack(pady=10)
+        tk.Button(root, text="Gia hạn RSA keys", command=self.extend_keys).pack(pady=10)
+        tk.Button(root, text="Xem RSA keys", command=self.view_keys).pack(pady=10)
+        tk.Button(root, text="Tạo QR code cho Public key", command=self.generate_qr_code).pack(pady=10)
+        tk.Button(root, text="Đọc QR code Public key", command=self.read_qr_code).pack(pady=10)
+        tk.Button(root, text="Tìm kiếm Public key", command=self.search_public_key).pack(pady=10)
+        tk.Button(root, text="Mã hóa tệp", command=self.encrypt_file).pack(pady=10)
+        tk.Button(root, text="Giải mã tệp", command=self.decrypt_file).pack(pady=10)
+        tk.Button(root, text="Đăng xuất", command=self.logout).pack(pady=10)
 
         self.adjust_window_size()
 
@@ -76,30 +77,30 @@ class DashboardWindow:
 
     def open_update_info(self):
         update_window = tk.Toplevel(self.root)
-        update_window.title("Update Information")
+        update_window.title("Cập nhật thông tin")
         update_window.transient(self.root)
         update_window.grab_set()
 
-        tk.Label(update_window, text="Full Name").pack(pady=5)
+        tk.Label(update_window, text="Tên đầy đủ").pack(pady=5)
         name_entry = tk.Entry(update_window)
         name_entry.insert(0, self.user['full_name'])
         name_entry.pack(pady=5)
 
-        tk.Label(update_window, text="Date of Birth (DD/MM/YYYY)").pack(pady=5)
+        tk.Label(update_window, text="Ngày sinh (DD/MM/YYYY)").pack(pady=5)
         dob_entry = tk.Entry(update_window)
         dob_entry.insert(0, self.user['dob'])
         dob_entry.pack(pady=5)
         dob_error = tk.Label(update_window, text="", fg="red")
         dob_error.pack()
 
-        tk.Label(update_window, text="Phone Number").pack(pady=5)
+        tk.Label(update_window, text="Số điện thoại").pack(pady=5)
         phone_entry = tk.Entry(update_window)
         phone_entry.insert(0, self.user['phone'])
         phone_entry.pack(pady=5)
         phone_error = tk.Label(update_window, text="", fg="red")
         phone_error.pack()
 
-        tk.Label(update_window, text="Address").pack(pady=5)
+        tk.Label(update_window, text="Địa chỉ").pack(pady=5)
         address_entry = tk.Entry(update_window)
         address_entry.insert(0, self.user['address'])
         address_entry.pack(pady=5)
@@ -114,15 +115,15 @@ class DashboardWindow:
             phone_error.config(text="")
 
             if not all([new_name, new_dob, new_phone, new_address]):
-                messagebox.showerror("Error", "All fields are required")
+                messagebox.showerror("Lỗi", "Tất cả các trường đều bắt buộc")
                 return
 
             if not self.validate_dob(new_dob):
-                dob_error.config(text="Invalid date or format (use DD/MM/YYYY)")
+                dob_error.config(text="Ngày không hợp lệ hoặc sai định dạng (dùng DD/MM/YYYY)")
                 return
 
             if not self.validate_phone(new_phone):
-                phone_error.config(text="Invalid phone number format")
+                phone_error.config(text="Định dạng số điện thoại không hợp lệ")
                 return
 
             users_file = Path("./data/users.json")
@@ -145,19 +146,19 @@ class DashboardWindow:
                     "address": new_address
                 })
                 log_action(self.user["email"], "update_info", "success")
-                messagebox.showinfo("Success", "Information updated successfully")
+                messagebox.showinfo("Thành công", "Thông tin đã được cập nhật thành công")
                 update_window.destroy()
                 self.root.destroy()
                 new_dashboard = tk.Toplevel(self.main_window.root)
                 DashboardWindow(new_dashboard, self.main_window, self.user)
             except Exception as e:
                 log_action(self.user["email"], "update_info", f"failed: {str(e)}")
-                messagebox.showerror("Error", f"Failed to update information: {str(e)}")
+                messagebox.showerror("Lỗi", f"Không thể cập nhật thông tin: {str(e)}")
 
         button_frame = tk.Frame(update_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Save", command=save_changes).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=update_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Lưu", command=save_changes).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=update_window.destroy).pack(side=tk.LEFT, padx=5)
 
         update_window.update_idletasks()
         req_width = update_window.winfo_reqwidth() + 40
@@ -168,36 +169,73 @@ class DashboardWindow:
 
     def create_new_keys(self):
         passphrase_window = tk.Toplevel(self.root)
-        passphrase_window.title("Enter Passphrase")
+        passphrase_window.title("Tạo mới RSA keys")
         passphrase_window.transient(self.root)
         passphrase_window.grab_set()
 
-        tk.Label(passphrase_window, text="Enter your passphrase").pack(pady=5)
+        tk.Label(passphrase_window, text="Nhập passphrase").pack(pady=5)
         passphrase_entry = tk.Entry(passphrase_window, show="*")
         passphrase_entry.pack(pady=5)
+
+        tk.Label(passphrase_window, text="Nhập recovery code (tùy chọn)").pack(pady=5)
+        recovery_entry = tk.Entry(passphrase_window, show="*")
+        recovery_entry.pack(pady=5)
+
         error_label = tk.Label(passphrase_window, text="", fg="red")
         error_label.pack()
 
         def submit_passphrase():
-            passphrase = passphrase_entry.get()
+            passphrase = passphrase_entry.get().strip()
+            recovery_code = recovery_entry.get().strip() or None
             if not passphrase:
-                error_label.config(text="Passphrase is required")
+                error_label.config(text="Passphrase là bắt buộc")
                 return
+
+            valid, error = validate_passphrase(passphrase)
+            if not valid:
+                error_label.config(text=error)
+                return
+
+            success, message = verify_passphrase(self.user["email"], passphrase)
+            if not success:
+                error_label.config(text="Passphrase không hợp lệ")
+                log_action(self.user["email"], "create_rsa_keys", f"failed: {message}")
+                return
+
+            if recovery_code:
+                try:
+                    with open(Path("./data/users.json"), "r") as f:
+                        users = json.load(f)
+                    user = next((u for u in users if u["email"] == self.user["email"]), None)
+                    if not user:
+                        error_label.config(text="Không tìm thấy người dùng")
+                        return
+                    recovery_code_hash = base64.b64decode(user["recovery_code_hash"])
+                    recovery_salt = base64.b64decode(user["recovery_code_salt"])
+                    input_hash = derive_key(recovery_code, recovery_salt)
+                    if recovery_code_hash != input_hash:
+                        error_label.config(text="Recovery code không hợp lệ")
+                        log_action(self.user["email"], "create_rsa_keys", "failed: Invalid recovery code")
+                        return
+                except Exception as e:
+                    error_label.config(text=f"Lỗi: {str(e)}")
+                    log_action(self.user["email"], "create_rsa_keys", f"failed: {str(e)}")
+                    return
+
             try:
-                safe_email = self.user["email"].replace("@", "_at_").replace(".", "_dot_")
-                key_data = generate_rsa_keypair(safe_email, passphrase, mode="renew")
-                update_public_key_store(safe_email)
+                key_data = generate_rsa_keypair(self.user["email"], passphrase, recovery_code, mode="renew")
+                update_public_key_store(self.user["email"])
                 log_action(self.user["email"], "create_rsa_keys", "success")
-                messagebox.showinfo("Success", "New RSA keys created successfully")
+                messagebox.showinfo("Thành công", "RSA keys được tạo thành công")
                 passphrase_window.destroy()
             except Exception as e:
                 log_action(self.user["email"], "create_rsa_keys", f"failed: {str(e)}")
-                error_label.config(text=f"Error: {str(e)}")
+                error_label.config(text=f"Lỗi: {str(e)}")
 
         button_frame = tk.Frame(passphrase_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Submit", command=submit_passphrase).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=passphrase_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Tạo", command=submit_passphrase).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=passphrase_window.destroy).pack(side=tk.LEFT, padx=5)
 
         passphrase_window.update_idletasks()
         req_width = passphrase_window.winfo_reqwidth() + 40
@@ -208,36 +246,73 @@ class DashboardWindow:
 
     def extend_keys(self):
         passphrase_window = tk.Toplevel(self.root)
-        passphrase_window.title("Enter Passphrase")
+        passphrase_window.title("Gia hạn RSA keys")
         passphrase_window.transient(self.root)
         passphrase_window.grab_set()
 
-        tk.Label(passphrase_window, text="Enter your passphrase").pack(pady=5)
+        tk.Label(passphrase_window, text="Nhập passphrase").pack(pady=5)
         passphrase_entry = tk.Entry(passphrase_window, show="*")
         passphrase_entry.pack(pady=5)
+
+        tk.Label(passphrase_window, text="Nhập recovery code (tùy chọn)").pack(pady=5)
+        recovery_entry = tk.Entry(passphrase_window, show="*")
+        recovery_entry.pack(pady=5)
+
         error_label = tk.Label(passphrase_window, text="", fg="red")
         error_label.pack()
 
         def submit_passphrase():
-            passphrase = passphrase_entry.get()
+            passphrase = passphrase_entry.get().strip()
+            recovery_code = recovery_entry.get().strip() or None
             if not passphrase:
-                error_label.config(text="Passphrase is required")
+                error_label.config(text="Passphrase là bắt buộc")
                 return
+
+            valid, error = validate_passphrase(passphrase)
+            if not valid:
+                error_label.config(text=error)
+                return
+
+            success, message = verify_passphrase(self.user["email"], passphrase)
+            if not success:
+                error_label.config(text="Passphrase không hợp lệ")
+                log_action(self.user["email"], "extend_rsa_keys", f"failed: {message}")
+                return
+
+            if recovery_code:
+                try:
+                    with open(Path("./data/users.json"), "r") as f:
+                        users = json.load(f)
+                    user = next((u for u in users if u["email"] == self.user["email"]), None)
+                    if not user:
+                        error_label.config(text="Không tìm thấy người dùng")
+                        return
+                    recovery_code_hash = base64.b64decode(user["recovery_code_hash"])
+                    recovery_salt = base64.b64decode(user["recovery_code_salt"])
+                    input_hash = derive_key(recovery_code, recovery_salt)
+                    if recovery_code_hash != input_hash:
+                        error_label.config(text="Recovery code không hợp lệ")
+                        log_action(self.user["email"], "extend_rsa_keys", "failed: Invalid recovery code")
+                        return
+                except Exception as e:
+                    error_label.config(text=f"Lỗi: {str(e)}")
+                    log_action(self.user["email"], "extend_rsa_keys", f"failed: {str(e)}")
+                    return
+
             try:
-                safe_email = self.user["email"].replace("@", "_at_").replace(".", "_dot_")
-                key_data = generate_rsa_keypair(safe_email, passphrase, mode="extend")
-                update_public_key_store(safe_email)
+                key_data = generate_rsa_keypair(self.user["email"], passphrase, recovery_code, mode="extend")
+                update_public_key_store(self.user["email"])
                 log_action(self.user["email"], "extend_rsa_keys", "success")
-                messagebox.showinfo("Success", "RSA key expiration extended successfully")
+                messagebox.showinfo("Thành công", "RSA keys đã được gia hạn thành công")
                 passphrase_window.destroy()
             except Exception as e:
                 log_action(self.user["email"], "extend_rsa_keys", f"failed: {str(e)}")
-                error_label.config(text=f"Error: {str(e)}")
+                error_label.config(text=f"Lỗi: {str(e)}")
 
         button_frame = tk.Frame(passphrase_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Submit", command=submit_passphrase).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=passphrase_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Gia hạn", command=submit_passphrase).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=passphrase_window.destroy).pack(side=tk.LEFT, padx=5)
 
         passphrase_window.update_idletasks()
         req_width = passphrase_window.winfo_reqwidth() + 40
@@ -256,21 +331,20 @@ class DashboardWindow:
                 key_data = update_key_status(key_data, now)
                 with open(current_key_path, "w") as f:
                     json.dump(key_data, f, indent=4)
-            update_public_key_store(safe_email)
+            update_public_key_store(self.user["email"])
             log_action(self.user["email"], "view_keys", "success: Updated key status")
+            key_window = tk.Toplevel(self.root)
+            KeyStorageWindow(key_window, self, safe_email)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             log_action(self.user["email"], "view_keys", f"failed: {str(e)}")
-        key_window = tk.Toplevel(self.root)
-        KeyStorageWindow(key_window, self, safe_email)
+            messagebox.showerror("Lỗi", "Không tìm thấy RSA keys. Vui lòng tạo mới.")
 
     def generate_qr_code(self):
-        """Generate and display a QR code for the user's public key."""
         safe_email = self.user["email"].replace("@", "_at_").replace(".", "_dot_")
         try:
             qr_path, message = generate_qr_for_public_key(self.user["email"], safe_email)
-            # Display QR code
             qr_window = tk.Toplevel(self.root)
-            qr_window.title("Public Key QR Code")
+            qr_window.title("QR Code Public Key")
             qr_window.transient(self.root)
             qr_window.grab_set()
 
@@ -279,10 +353,9 @@ class DashboardWindow:
             qr_image = ImageTk.PhotoImage(img)
             tk.Label(qr_window, image=qr_image).pack(pady=10)
             tk.Label(qr_window, text=message).pack(pady=5)
-            tk.Button(qr_window, text="Close", command=qr_window.destroy).pack(pady=10)
-            qr_window.qr_image = qr_image  # Keep reference to avoid garbage collection
+            tk.Button(qr_window, text="Đóng", command=qr_window.destroy).pack(pady=10)
+            qr_window.qr_image = qr_image
 
-            # Adjust window size
             qr_window.update_idletasks()
             req_width = max(qr_window.winfo_reqwidth() + 40, 300)
             req_height = max(qr_window.winfo_reqheight() + 40, 300)
@@ -291,34 +364,30 @@ class DashboardWindow:
             qr_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
         except ValueError as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Lỗi", str(e))
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to generate QR code: {str(e)}")
+            messagebox.showerror("Lỗi", f"Không thể tạo QR code: {str(e)}")
             log_action(self.user["email"], "generate_qr_code", f"failed: {str(e)}")
 
     def read_qr_code(self):
-        """Read a QR code and display its information."""
         file_path = filedialog.askopenfilename(filetypes=[("PNG Images", "*.png"), ("All Files", "*.*")])
         if not file_path:
             return
 
         try:
             qr_data, status_msg = read_qr(self.user["email"], file_path)
-            # Display QR code information
             qr_info_window = tk.Toplevel(self.root)
-            qr_info_window.title("QR Code Information")
+            qr_info_window.title("Thông tin QR Code")
             qr_info_window.transient(self.root)
             qr_info_window.grab_set()
 
             tk.Label(qr_info_window, text=f"Email: {qr_data['email']}", anchor="w").pack(fill="x", pady=5)
-            tk.Label(qr_info_window, text=f"Created: {datetime.fromisoformat(qr_data['created']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
-            tk.Label(qr_info_window, text=f"Expires: {datetime.fromisoformat(qr_data['expires']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
-            tk.Label(qr_info_window, text=f"Status: {qr_data['status']}", anchor="w").pack(fill="x", pady=5)
-            tk.Label(qr_info_window, text=f"Public Key: {qr_data['public_key'][:20]}...", anchor="w").pack(fill="x", pady=5)
-            tk.Label(qr_info_window, text=f"Storage: {status_msg}", anchor="w").pack(fill="x", pady=5)
-            tk.Button(qr_info_window, text="Close", command=qr_info_window.destroy).pack(pady=10)
+            tk.Label(qr_info_window, text=f"Ngày tạo: {datetime.fromisoformat(qr_data['created']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
+            tk.Label(qr_info_window, text=f"Hết hạn: {datetime.fromisoformat(qr_data['expires']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
+            tk.Label(qr_info_window, text=f"Public Key: {qr_data['public_key']}", anchor="w").pack(fill="x", pady=5)
+            tk.Label(qr_info_window, text=f"Lưu trữ: {status_msg}", anchor="w").pack(fill="x", pady=5)
+            tk.Button(qr_info_window, text="Đóng", command=qr_info_window.destroy).pack(pady=10)
 
-            # Adjust window size
             qr_info_window.update_idletasks()
             req_width = max(qr_info_window.winfo_reqwidth() + 40, 400)
             req_height = max(qr_info_window.winfo_reqheight() + 40, 300)
@@ -327,18 +396,17 @@ class DashboardWindow:
             qr_info_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
         except ValueError as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Lỗi", str(e))
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to read QR code: {str(e)}")
+            messagebox.showerror("Lỗi", f"Không thể đọc QR code: {str(e)}")
 
     def search_public_key(self):
-        """Search for another user's public key by email and display its information."""
         search_window = tk.Toplevel(self.root)
-        search_window.title("Search Public Key")
+        search_window.title("Tìm kiếm Public Key")
         search_window.transient(self.root)
         search_window.grab_set()
 
-        tk.Label(search_window, text="Enter Email to Search").pack(pady=5)
+        tk.Label(search_window, text="Nhập Email để tìm kiếm").pack(pady=5)
         email_entry = tk.Entry(search_window)
         email_entry.pack(pady=5)
         error_label = tk.Label(search_window, text="", fg="red")
@@ -347,7 +415,7 @@ class DashboardWindow:
         def perform_search():
             search_email = email_entry.get().strip()
             if not search_email:
-                error_label.config(text="Email is required")
+                error_label.config(text="Email là bắt buộc")
                 return
 
             try:
@@ -356,25 +424,23 @@ class DashboardWindow:
                 if result is None:
                     if similar_emails:
                         similar_emails_str = "\n".join(similar_emails)
-                        messagebox.showinfo("Not Found", f"{message}\nSimilar emails:\n{similar_emails_str}")
+                        messagebox.showinfo("Không tìm thấy", f"{message}\nEmail tương tự:\n{similar_emails_str}")
                     else:
-                        messagebox.showinfo("Not Found", message)
+                        messagebox.showinfo("Không tìm thấy", message)
                     return
 
-                # Display key information
                 result_window = tk.Toplevel(self.root)
                 result_window.title(f"Public Key - {search_email}")
                 result_window.transient(self.root)
                 result_window.grab_set()
 
                 tk.Label(result_window, text=f"Email: {search_email}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Created: {datetime.fromisoformat(result['created']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Expires: {datetime.fromisoformat(result['expires']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Status: {result['status']}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Ngày tạo: {datetime.fromisoformat(result['created']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Hết hạn: {datetime.fromisoformat(result['expires']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Trạng thái: {result['status']}", anchor="w").pack(fill="x", pady=5)
                 tk.Label(result_window, text=f"Public Key: {result['public_key'][:20]}...", anchor="w").pack(fill="x", pady=5)
-                tk.Button(result_window, text="Close", command=result_window.destroy).pack(pady=10)
+                tk.Button(result_window, text="Đóng", command=result_window.destroy).pack(pady=10)
 
-                # Adjust window size
                 result_window.update_idletasks()
                 req_width = max(result_window.winfo_reqwidth() + 40, 400)
                 req_height = max(result_window.winfo_reqheight() + 40, 300)
@@ -383,12 +449,12 @@ class DashboardWindow:
                 result_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to search public key: {str(e)}")
+                messagebox.showerror("Lỗi", f"Không thể tìm kiếm public key: {str(e)}")
 
         button_frame = tk.Frame(search_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Search", command=perform_search).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=search_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Tìm kiếm", command=perform_search).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=search_window.destroy).pack(side=tk.LEFT, padx=5)
 
         search_window.update_idletasks()
         req_width = search_window.winfo_reqwidth() + 40
@@ -398,25 +464,24 @@ class DashboardWindow:
         search_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
     def encrypt_file(self):
-        """Encrypt a file for a recipient with options for single or split format."""
         encrypt_window = tk.Toplevel(self.root)
-        encrypt_window.title("Encrypt File")
+        encrypt_window.title("Mã hóa tệp")
         encrypt_window.transient(self.root)
         encrypt_window.grab_set()
 
-        tk.Label(encrypt_window, text="Select File to Encrypt").pack(pady=5)
+        tk.Label(encrypt_window, text="Chọn tệp để mã hóa").pack(pady=5)
         file_entry = tk.Entry(encrypt_window, width=50)
         file_entry.pack(pady=5)
-        tk.Button(encrypt_window, text="Browse", command=lambda: file_entry.insert(0, filedialog.askopenfilename())).pack(pady=5)
+        tk.Button(encrypt_window, text="Duyệt", command=lambda: file_entry.insert(0, filedialog.askopenfilename())).pack(pady=5)
 
-        tk.Label(encrypt_window, text="Recipient Email").pack(pady=5)
+        tk.Label(encrypt_window, text="Email người nhận").pack(pady=5)
         email_entry = tk.Entry(encrypt_window)
         email_entry.pack(pady=5)
 
-        tk.Label(encrypt_window, text="Save Format").pack(pady=5)
+        tk.Label(encrypt_window, text="Định dạng lưu").pack(pady=5)
         split_key_var = tk.BooleanVar(value=False)
-        tk.Radiobutton(encrypt_window, text="Single .enc file", variable=split_key_var, value=False).pack()
-        tk.Radiobutton(encrypt_window, text="Separate .enc and .key files", variable=split_key_var, value=True).pack()
+        tk.Radiobutton(encrypt_window, text="Tệp .enc duy nhất", variable=split_key_var, value=False).pack()
+        tk.Radiobutton(encrypt_window, text="Tách riêng tệp .enc và .key", variable=split_key_var, value=True).pack()
 
         error_label = tk.Label(encrypt_window, text="", fg="red")
         error_label.pack()
@@ -427,30 +492,30 @@ class DashboardWindow:
             split_key = split_key_var.get()
 
             if not input_path or not recipient_email:
-                error_label.config(text="File and recipient email are required")
+                error_label.config(text="Tệp và email người nhận là bắt buộc")
                 return
 
             email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             if not re.match(email_pattern, recipient_email):
-                error_label.config(text="Invalid recipient email format")
+                error_label.config(text="Định dạng email người nhận không hợp lệ")
                 return
 
             try:
                 enc_path, key_path = encrypt_file_with_metadata(input_path, recipient_email, self.user["email"], split_key)
-                message = f"File encrypted successfully: {enc_path}"
+                message = f"Tệp được mã hóa thành công: {enc_path}"
                 if key_path:
-                    message += f"\nKey file: {key_path}"
-                messagebox.showinfo("Success", message)
+                    message += f"\nTệp khóa: {key_path}"
+                messagebox.showinfo("Thành công", message)
                 encrypt_window.destroy()
             except ValueError as e:
                 error_label.config(text=str(e))
             except Exception as e:
-                error_label.config(text=f"Encryption failed: {str(e)}")
+                error_label.config(text=f"Mã hóa thất bại: {str(e)}")
 
         button_frame = tk.Frame(encrypt_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Encrypt", command=perform_encryption).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=encrypt_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Mã hóa", command=perform_encryption).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=encrypt_window.destroy).pack(side=tk.LEFT, padx=5)
 
         encrypt_window.update_idletasks()
         req_width = max(encrypt_window.winfo_reqwidth() + 40, 400)
@@ -460,23 +525,22 @@ class DashboardWindow:
         encrypt_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
     def decrypt_file(self):
-        """Decrypt a file from the user's storage folder."""
         decrypt_window = tk.Toplevel(self.root)
-        decrypt_window.title("Decrypt File")
+        decrypt_window.title("Giải mã tệp")
         decrypt_window.transient(self.root)
         decrypt_window.grab_set()
 
         safe_email = self.user["email"].replace("@", "_at_").replace(".", "_dot_")
         storage_dir = Path(f"data/{safe_email}/storage")
 
-        tk.Label(decrypt_window, text="Select Encrypted File (.enc)").pack(pady=5)
+        tk.Label(decrypt_window, text="Chọn tệp mã hóa (.enc)").pack(pady=5)
         file_entry = tk.Entry(decrypt_window, width=50)
         file_entry.pack(pady=5)
-        tk.Button(decrypt_window, text="Browse", command=lambda: file_entry.insert(0, filedialog.askopenfilename(
+        tk.Button(decrypt_window, text="Duyệt", command=lambda: file_entry.insert(0, filedialog.askopenfilename(
             initialdir=storage_dir, filetypes=[("Encrypted Files", "*.enc"), ("All Files", "*.*")]
         ))).pack(pady=5)
 
-        tk.Label(decrypt_window, text="Enter Passphrase").pack(pady=5)
+        tk.Label(decrypt_window, text="Nhập passphrase").pack(pady=5)
         passphrase_entry = tk.Entry(decrypt_window, show="*")
         passphrase_entry.pack(pady=5)
 
@@ -488,25 +552,24 @@ class DashboardWindow:
             passphrase = passphrase_entry.get().strip()
 
             if not enc_path:
-                error_label.config(text="Encrypted file is required")
+                error_label.config(text="Tệp mã hóa là bắt buộc")
                 return
             if not passphrase:
-                error_label.config(text="Passphrase is required")
+                error_label.config(text="Passphrase là bắt buộc")
                 return
 
             try:
                 output_path, metadata = decrypt_file(enc_path, passphrase, self.user["email"])
-                # Display results
                 result_window = tk.Toplevel(self.root)
-                result_window.title("Decryption Result")
+                result_window.title("Kết quả giải mã")
                 result_window.transient(self.root)
                 result_window.grab_set()
 
-                tk.Label(result_window, text=f"Decrypted File: {output_path}", anchor="w").pack(fill="x", pady=5)
+                tk.Label(result_window, text=f"Tệp đã giải mã: {output_path}", anchor="w").pack(fill="x", pady=5)
                 tk.Label(result_window, text="Metadata:", anchor="w").pack(fill="x", pady=5)
                 for key, value in metadata.items():
                     tk.Label(result_window, text=f"{key}: {value}", anchor="w").pack(fill="x", pady=2)
-                tk.Button(result_window, text="Close", command=result_window.destroy).pack(pady=10)
+                tk.Button(result_window, text="Đóng", command=result_window.destroy).pack(pady=10)
 
                 result_window.update_idletasks()
                 req_width = max(result_window.winfo_reqwidth() + 40, 400)
@@ -515,17 +578,17 @@ class DashboardWindow:
                 y = (result_window.winfo_screenheight() - req_height) // 2
                 result_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
-                messagebox.showinfo("Success", f"File decrypted successfully: {output_path}")
+                messagebox.showinfo("Thành công", f"Tệp được giải mã thành công: {output_path}")
                 decrypt_window.destroy()
             except ValueError as e:
                 error_label.config(text=str(e))
             except Exception as e:
-                error_label.config(text=f"Decryption failed: {str(e)}")
+                error_label.config(text=f"Giải mã thất bại: {str(e)}")
 
         button_frame = tk.Frame(decrypt_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Decrypt", command=perform_decryption).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=decrypt_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Giải mã", command=perform_decryption).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=decrypt_window.destroy).pack(side=tk.LEFT, padx=5)
 
         decrypt_window.update_idletasks()
         req_width = max(decrypt_window.winfo_reqwidth() + 40, 400)
