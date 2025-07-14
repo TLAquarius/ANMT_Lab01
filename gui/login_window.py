@@ -2,15 +2,16 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 from modules.auth import verify_login, generate_otp, generate_totp_qr, verify_totp
+from modules.admin import is_admin
 from modules.logger import log_action
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from gui.dashboard_window import DashboardWindow  # Import DashboardWindow
+from gui.dashboard_window import DashboardWindow
 
 class LoginWindow:
     def __init__(self, root, main_window):
-        self.root = root  # Toplevel window
-        self.main_window = main_window  # MainWindow instance
+        self.root = root
+        self.main_window = main_window
         self.root.title("Login")
         self.root.transient(main_window.root)
         self.root.grab_set()

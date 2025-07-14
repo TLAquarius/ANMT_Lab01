@@ -12,14 +12,12 @@ from pathlib import Path
 
 PUBLIC_KEY_DIR = Path("./data/public_keys")
 
-
 def derive_key(passphrase: str, salt: bytes) -> bytes:
     """Derives AES key from passphrase using PBKDF2."""
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000,
     )
     return kdf.derive(passphrase.encode())
-
 
 def update_key_status(key_data, now):
     """Update the status of a key based on its expiration and current time."""
@@ -32,14 +30,14 @@ def update_key_status(key_data, now):
             key_data["status"] = "almost expired"
     return key_data
 
-
 def update_public_key_store(email: str):
-    """Update public key store with the current key for the user."""
+    """Update public key store with the current key for the user (single dict)."""
     PUBLIC_KEY_DIR.mkdir(parents=True, exist_ok=True)
     safe_email = email.replace("@", "_at_").replace(".", "_dot_")
     public_key_path = PUBLIC_KEY_DIR / f"{safe_email}.json"
     now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
 
+    # Load current key
     key_data = {}
     try:
         with open(f"./data/{safe_email}/rsa_keypair.json", "r") as f:
@@ -61,7 +59,6 @@ def update_public_key_store(email: str):
         if public_key_path.exists():
             public_key_path.unlink()
 
-
 def load_current_public_key(recipient_email):
     """Load recipient's RSA public key from file."""
     safe_email = recipient_email.replace("@", "_at_").replace(".", "_dot_")
@@ -75,7 +72,6 @@ def load_current_public_key(recipient_email):
     except Exception as e:
         log_action(recipient_email, "load_public_key", f"failed: {str(e)}")
         raise
-
 
 def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None, mode="create") -> dict:
     """Generate or extend RSA key pair with 90-day expiration."""
@@ -141,9 +137,11 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
             log_action(email, "generate_rsa_keypair", f"failed: {str(e)}")
             # Fall through to generate new key if extension fails
 
+    # Generate new RSA key pair
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key = private_key.public_key()
 
+    # Serialize keys
     pub_bytes = public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -154,12 +152,14 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
         encryption_algorithm=serialization.NoEncryption()
     )
 
+    # Encrypt private key using AES-GCM
     salt = os.urandom(16)
     aes_key = derive_key(passphrase, salt)
     iv = os.urandom(12)
     aesgcm = AESGCM(aes_key)
     priv_enc = aesgcm.encrypt(iv, priv_bytes, associated_data=None)
 
+    # Encrypt private key with recovery code (if provided)
     recovery_enc_data = None
     if recovery_code:
         recovery_salt = os.urandom(16)
@@ -173,6 +173,7 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
             "recovery_iv": base64.b64encode(recovery_iv).decode()
         }
 
+    # Create key data dictionary
     new_time = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
     key_data = {
         "public_key": base64.b64encode(pub_bytes).decode(),
@@ -190,17 +191,17 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
         "encryption_mode": "AES-GCM"
     }
 
+    # Add recovery encryption data if available
     if recovery_enc_data:
         key_data.update(recovery_enc_data)
 
+    # Save new key pair, overwriting any existing key
     with open(key_path, "w") as f:
         json.dump(key_data, f, indent=4)
 
     update_public_key_store(email)
-    log_action(email, "generate_rsa_keypair",
-               f"success: Generated new key{' with recovery code' if recovery_code else ''}")
+    log_action(email, "generate_rsa_keypair", f"success: Generated new key{' with recovery code' if recovery_code else ''}")
     return key_data
-
 
 def get_private_key_for_decryption(email: str, passphrase: str, message_timestamp: str) -> object:
     """Retrieve the private key for decryption, validating against message timestamp."""
@@ -271,12 +272,16 @@ def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tu
     try:
         with open(key_path, "r") as f:
             key_data = json.load(f)
+        
+        # Check if recovery encryption is available
         if "private_key_enc_recovery" not in key_data:
             log_action(email, "decrypt_user_private_key_with_recovery", "failed: No recovery code associated with key")
             return False, None, "Khóa riêng không thể khôi phục vì không có recovery code lúc tạo key. Tạo khóa mới thành công"
         priv_enc = base64.b64decode(key_data["private_key_enc_recovery"])
         salt = base64.b64decode(key_data["recovery_salt"])
         iv = base64.b64decode(key_data["recovery_iv"])
+        
+        # Derive the AES key using the recovery code and stored salt
         aes_key = derive_key(recovery_code, salt)
         aesgcm = AESGCM(aes_key)
         priv_bytes = aesgcm.decrypt(iv, priv_enc, None)

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.rsa_keys import generate_rsa_keypair, update_public_key_store, decrypt_user_private_key_with_recovery, derive_key
+from modules.admin import is_admin
 from pathlib import Path
 from modules.logger import log_action
 
@@ -62,30 +63,38 @@ def generate_recovery_code() -> str:
 def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, passphrase: str) -> tuple[bool, str, str]:
     """Register a new user, generate RSA key pair, and return recovery code."""
     try:
+        # Load existing users
         try:
             with open(USERS_FILE, "r") as f:
                 users = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             users = []
 
+        # Check email uniqueness
         if any(user["email"] == email for user in users):
             log_action(email, "sign_up", "failed: Email already exists")
             return False, "Email đã tồn tại", ""
 
+        # Validate passphrase
         valid, error = validate_passphrase(passphrase)
         if not valid:
             log_action(email, "sign_up", f"failed: {error}")
             return False, error, ""
 
+        # Hash passphrase
         salt = os.urandom(16)
         hashed_passphrase = derive_key(passphrase, salt)
+
+        # Generate recovery code and hash it
         recovery_code = generate_recovery_code()
         recovery_salt = os.urandom(16)
         recovery_code_hash = derive_key(recovery_code, recovery_salt)
 
+        # Generate RSA key pair
         key_data = generate_rsa_keypair(email, passphrase, recovery_code)
         update_public_key_store(email)
 
+        # Create user profile, assign admin role if first user
         user = {
             "email": email,
             "full_name": full_name,
@@ -94,7 +103,7 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
             "address": address,
             "hashed_passphrase": base64.b64encode(hashed_passphrase).decode(),
             "salt": base64.b64encode(salt).decode(),
-            "role": "user",
+            "role": "admin" if not users else "user",
             "status": "unlocked",
             "totp_secret": pyotp.random_base32(),
             "failed_attempts": 0,
@@ -104,25 +113,29 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
         }
         users.append(user)
 
+        # Save users
         os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
         with open(USERS_FILE, "w") as f:
             json.dump(users, f, indent=4)
 
         safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+        # Create user folder structure in data directory
         data_dir = Path("./data")
         user_dir = data_dir / safe_email
         storage_dir = user_dir / "storage"
         public_keys_dir = data_dir / "public_keys"
+
+        # Create directories
         user_dir.mkdir(parents=True, exist_ok=True)
         storage_dir.mkdir(parents=True, exist_ok=True)
         public_keys_dir.mkdir(parents=True, exist_ok=True)
 
-        log_action(email, "sign_up", "success")
+        log_action(email, "sign_up", f"success: Role assigned {'admin' if not users else 'user'}")
         return True, "Đăng ký thành công", recovery_code
 
     except Exception as e:
         log_action(email, "sign_up", f"failed: {str(e)}")
-        return False, f"Lỗi: {str(e)}", ""
+        return False, f"Error: {str(e)}", ""
 
 def generate_otp() -> tuple[str, str, str]:
     """Generate a 6-digit OTP with creation/expiration times."""
@@ -151,6 +164,7 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
 
     for user in users:
         if user["email"] == email:
+            # Check lockout status
             remaining_time = get_remaining_lockout_time(user.get("lockout_until"))
             if remaining_time > 0:
                 log_action(email, "login", f"failed: Account locked for {remaining_time} seconds")
@@ -161,6 +175,7 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
             input_hash = derive_key(passphrase, salt)
 
             if stored_hash == input_hash:
+                # Reset failed attempts on successful login
                 user["failed_attempts"] = 0
                 user["lockout_until"] = None
                 with open(USERS_FILE, "w") as f:
@@ -172,6 +187,7 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
                     log_action(email, "login", "failed: Locked user")
                     return False, None, "Tài khoản đã bị khóa"
             else:
+                # Increment failed attempts
                 user["failed_attempts"] = user.get("failed_attempts", 0) + 1
                 if user["failed_attempts"] >= MAX_LOGIN_ATTEMPTS:
                     user["lockout_until"] = (datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")) + LOCKOUT_DURATION).isoformat()
@@ -182,10 +198,10 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
                 if user.get("lockout_until"):
                     remaining_time = get_remaining_lockout_time(user["lockout_until"])
                     return False, None, f"Tài khoản đã bị khóa. Thử lại sau {remaining_time} giây."
-                return False, None, "Tên người dùng hoặc passphrase bị sai"
+                return False, None, "Tên người dùng hoặc mật khẩu bị sai"
 
     log_action(email, "login", "failed: Email not found")
-    return False, None, "Tên người dùng hoặc passphrase bị sai"
+    return False, None, "Tên người dùng hoặc mật khẩu bị sai"
 
 def generate_totp_qr(email: str, totp_secret: str) -> str:
     """Generate TOTP QR code and save to user's folder."""
@@ -208,6 +224,7 @@ def verify_totp(totp_secret: str, code: str) -> bool:
 def reset_passphrase(email: str, recovery_code: str, new_passphrase: str) -> tuple[bool, str]:
     """Reset passphrase and re-encrypt or generate RSA private key."""
     try:
+        # Load users
         try:
             with open(USERS_FILE, "r") as f:
                 users = json.load(f)
@@ -215,46 +232,53 @@ def reset_passphrase(email: str, recovery_code: str, new_passphrase: str) -> tup
             log_action(email, "reset_passphrase", "failed: No users registered")
             return False, "Chưa có user"
 
+        # Find user
         user = next((u for u in users if u["email"] == email), None)
         if not user:
             log_action(email, "reset_passphrase", "failed: Email not found")
             return False, "Email không tồn tại"
 
+        # Verify recovery code
         recovery_code_hash = base64.b64decode(user["recovery_code_hash"])
         recovery_salt = base64.b64decode(user["recovery_code_salt"])
         input_hash = derive_key(recovery_code, recovery_salt)
         if recovery_code_hash != input_hash:
             log_action(email, "reset_passphrase", "failed: Invalid recovery code")
-            return False, "Recovery code không hợp lệ"
+            return False, "Mã khôi phục không hợp lệ"
 
+        # Validate new passphrase
         valid, error = validate_passphrase(new_passphrase)
         if not valid:
             log_action(email, "reset_passphrase", f"failed: {error}")
             return False, error
 
+        # Decrypt private key with recovery code
+        success, private_key, message = decrypt_user_private_key_with_recovery(email, recovery_code)
+
+        # Re-encrypt private key with new passphrase
         new_salt = os.urandom(16)
         new_hashed_passphrase = derive_key(new_passphrase, new_salt)
-        safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-        key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
-
-        success, private_key, message = decrypt_user_private_key_with_recovery(email, recovery_code)
         if success and private_key:
+            aes_key = derive_key(new_passphrase, new_salt)
+            iv = os.urandom(12)
+            aesgcm = AESGCM(aes_key)
             priv_bytes = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             )
-            aes_key = derive_key(new_passphrase, new_salt)
-            iv = os.urandom(12)
-            aesgcm = AESGCM(aes_key)
             priv_enc = aesgcm.encrypt(iv, priv_bytes, None)
 
-            recovery_salt = os.urandom(16)
-            recovery_aes_key = derive_key(recovery_code, recovery_salt)
+            # Re-encrypt with new recovery code for future resets
+            new_recovery_salt = os.urandom(16)
+            recovery_aes_key = derive_key(recovery_code, new_recovery_salt)
             recovery_iv = os.urandom(12)
             recovery_aesgcm = AESGCM(recovery_aes_key)
             priv_enc_recovery = recovery_aesgcm.encrypt(recovery_iv, priv_bytes, None)
 
+            # Update rsa_keypair.json
+            safe_email = email.replace("@", "_at_").replace(".", "_dot_")
+            key_path = f"./data/{safe_email}/rsa_keypair.json"
             with open(key_path, "r") as f:
                 key_data = json.load(f)
             key_data.update({
@@ -262,29 +286,29 @@ def reset_passphrase(email: str, recovery_code: str, new_passphrase: str) -> tup
                 "salt": base64.b64encode(new_salt).decode(),
                 "iv": base64.b64encode(iv).decode(),
                 "private_key_enc_recovery": base64.b64encode(priv_enc_recovery).decode(),
-                "recovery_salt": base64.b64encode(recovery_salt).decode(),
+                "recovery_salt": base64.b64encode(new_recovery_salt).decode(),
                 "recovery_iv": base64.b64encode(recovery_iv).decode()
             })
             with open(key_path, "w") as f:
                 json.dump(key_data, f, indent=4)
             log_action(email, "reset_passphrase", "success: Re-encrypted existing key")
+            # Update users.json with new passphrase hash and salt
             user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
             user["salt"] = base64.b64encode(new_salt).decode()
             with open(USERS_FILE, "w") as f:
                 json.dump(users, f, indent=4)
-
             update_public_key_store(email)
             return True, "Passphrase được đặt lại và RSA keys được khôi phục thành công"
-        else:
-            key_data = generate_rsa_keypair(email, new_passphrase, recovery_code, mode="renew")
-            log_action(email, "reset_passphrase", f"success: {message}. Generated new key")
-            user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
-            user["salt"] = base64.b64encode(new_salt).decode()
-            with open(USERS_FILE, "w") as f:
-                json.dump(users, f, indent=4)
 
-            update_public_key_store(email)
-            return True, "Passphrase được đặt lại và RSA keys được tạo mới (key cũ không có recovery code)"
+        key_data = generate_rsa_keypair(email, new_passphrase, recovery_code, mode="renew")
+        log_action(email, "reset_passphrase", f"success: {message}. Generated new key")
+        user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
+        user["salt"] = base64.b64encode(new_salt).decode()
+        with open(USERS_FILE, "w") as f:
+            json.dump(users, f, indent=4)
+
+        update_public_key_store(email)
+        return True, "Passphrase được đặt lại và RSA keys được tạo mới (key cũ không có recovery code)"
 
     except Exception as e:
         log_action(email, "reset_passphrase", f"failed: {str(e)}")
