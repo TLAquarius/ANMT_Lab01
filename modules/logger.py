@@ -1,7 +1,7 @@
 import json, os
 from zoneinfo import ZoneInfo
 from datetime import datetime
-LOG_FILE = "../data/security.log"
+LOG_FILE = "./data/security.log"
 
 def log_action(email, action, status):
     """Log security events to security.log."""

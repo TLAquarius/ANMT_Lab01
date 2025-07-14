@@ -14,7 +14,7 @@ class SignupWindow:
 
         # Minimum window size
         self.min_width = 400
-        self.min_height = 550  # Increased to accommodate new field
+        self.min_height = 550
 
         # Add padding
         self.root.configure(padx=20, pady=20)
@@ -133,33 +133,31 @@ class SignupWindow:
 
         # Check if all fields are filled
         if not all([email, full_name, dob, phone, address, passphrase, confirm_passphrase]):
-            messagebox.showerror("Error", "All fields are required")
+            messagebox.showerror("Error", "Vui lòng điền đầy đủ thông tin")
             return
 
         # Validate email
         if not self.validate_email(email):
-            self.email_error.config(text="Invalid email format")
+            self.email_error.config(text="Format email không hợp lệ")
             return
 
         # Validate date of birth
         if not self.validate_dob(dob):
-            self.dob_error.config(text="Invalid date or format (use DD/MM/YYYY)")
+            self.dob_error.config(text="Ngày sinh không hợp lệ (định dạng: DD/MM/YYYY)")
             return
 
-        # Validate phone number
         if not self.validate_phone(phone):
-            self.phone_error.config(text="Invalid phone number format (use digits, optional hyphens/spaces)")
+            self.phone_error.config(text="Số điện thoại không hợp lệ")
             return
 
         # Validate passphrase match
         if passphrase != confirm_passphrase:
-            self.confirm_passphrase_error.config(text="Passphrases do not match")
+            self.confirm_passphrase_error.config(text="Mật khẩu không khớp")
             return
 
-        # Call sign_up function
-        success, message = sign_up(email, full_name, dob, phone, address, passphrase)
+        success, message, recovery_code = sign_up(email, full_name, dob, phone, address, passphrase)
         if success:
-            messagebox.showinfo("Success", message)
+            messagebox.showinfo("Success", f"{message}\nMã khôi phục: {recovery_code}\nVui lòng ghi nhớ mã này")
             self.go_back()
         else:
             messagebox.showerror("Error", message)

@@ -1,6 +1,7 @@
 import tkinter as tk
 from gui.register_window import SignupWindow
 from gui.login_window import LoginWindow
+from gui.recovery_window import RecoveryWindow
 
 class MainWindow:
     def __init__(self, root):
@@ -18,6 +19,8 @@ class MainWindow:
         self.signup_button.pack(pady=10)
         self.login_button = tk.Button(root, text="Login", command=self.open_login)
         self.login_button.pack(pady=10)
+        self.reset_button = tk.Button(root, text="Reset Passphrase", command=self.open_reset)
+        self.reset_button.pack(pady=10)
 
         # Adjust window size
         self.adjust_window_size()
@@ -57,6 +60,11 @@ class MainWindow:
         self.disable_buttons()
         login_window = tk.Toplevel(self.root)
         LoginWindow(login_window, self)  # Pass self (MainWindow instance)
+
+    def open_reset(self):
+        """Open the reset passphrase window"""
+        reset_window = tk.Toplevel(self.root)
+        RecoveryWindow(reset_window, self)  # Pass self (MainWindow instance)
 
 if __name__ == "__main__":
     root = tk.Tk()

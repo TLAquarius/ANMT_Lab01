@@ -37,6 +37,10 @@ class LoginWindow:
         tk.Button(button_frame, text="Login", command=self.submit_login).pack(side=tk.LEFT, padx=10)
         tk.Button(button_frame, text="Back", command=self.go_back).pack(side=tk.LEFT, padx=10)
 
+        # Lockout message
+        self.lockout_label = tk.Label(root, text="", fg="red")
+        self.lockout_label.pack(pady=5)
+
         # MFA frame (hidden initially)
         self.mfa_frame = tk.Frame(root)
         tk.Label(self.mfa_frame, text="Select MFA Method").pack(pady=5)
@@ -81,12 +85,13 @@ class LoginWindow:
             return
 
         success, user, message = verify_login(email, passphrase)
+        self.lockout_label.config(text=message if "locked" in message.lower() else "")
         if success:
             self.user = user
             self.email_entry.config(state="disabled")
             self.passphrase_entry.config(state="disabled")
+            self.lockout_label.config(text="")
             self.mfa_frame.pack(pady=10)
-            self.adjust_window_size()
         else:
             messagebox.showerror("Error", message)
 
