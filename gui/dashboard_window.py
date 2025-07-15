@@ -7,7 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageTk
 from modules.rsa_keys import generate_rsa_keypair, update_public_key_store, derive_key
-from modules.key_status import update_key_status
+from pyzbar.pyzbar import decode
 from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
@@ -28,7 +28,7 @@ class DashboardWindow:
         self.root.grab_set()
 
         self.min_width = 400
-        self.min_height = 800  # Increased height for new buttons
+        self.min_height = 800
 
         self.root.configure(padx=20, pady=20)
 
@@ -52,12 +52,10 @@ class DashboardWindow:
             tk.Button(root, text="Quản Trị", command=self.open_admin).pack(pady=10)
 
         tk.Button(root, text="Update Information", command=self.open_update_info).pack(pady=10)
-        tk.Button(root, text="Create New RSA Keys", command=self.create_new_keys).pack(pady=10)
-        tk.Button(root, text="Extend RSA Key Expiration", command=self.extend_keys).pack(pady=10)
         tk.Button(root, text="View Keys", command=self.view_keys).pack(pady=10)
         tk.Button(root, text="Generate Public Key QR Code", command=self.generate_qr_code).pack(pady=10)
         tk.Button(root, text="Read Public Key QR Code", command=self.read_qr_code).pack(pady=10)
-        tk.Button(root, text="Search Public Key", command=self.search_public_key).pack(pady=10)
+        tk.Button(root, text="Search Public Key", command=self.search_public_key_ui).pack(pady=10)
         tk.Button(root, text="Encrypt File", command=self.encrypt_file).pack(pady=10)
         tk.Button(root, text="Decrypt File", command=self.decrypt_file).pack(pady=10)
         tk.Button(root, text="File Sign", command=self.sign_file).pack(pady=10)
@@ -202,7 +200,7 @@ class DashboardWindow:
         y = (update_window.winfo_screenheight() - req_height) // 2
         update_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
-    def create_new_keys(self):
+    def create_new_keys(self, callback=None):
         passphrase_window = tk.Toplevel(self.root)
         passphrase_window.title("Enter Passphrase")
         passphrase_window.transient(self.root)
@@ -263,6 +261,8 @@ class DashboardWindow:
                 log_action(self.email, "create_rsa_keys", "success")
                 messagebox.showinfo("Success", "New RSA keys created successfully")
                 passphrase_window.destroy()
+                if callback:
+                    callback()
             except Exception as e:
                 log_action(self.email, "create_rsa_keys", f"failed: {str(e)}")
                 error_label.config(text=f"Error: {str(e)}")
@@ -279,7 +279,7 @@ class DashboardWindow:
         y = (passphrase_window.winfo_screenheight() - req_height) // 2
         passphrase_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
-    def extend_keys(self):
+    def extend_keys(self, callback=None):
         passphrase_window = tk.Toplevel(self.root)
         passphrase_window.title("Enter Passphrase")
         passphrase_window.transient(self.root)
@@ -340,6 +340,8 @@ class DashboardWindow:
                 log_action(self.email, "extend_rsa_keys", "success")
                 messagebox.showinfo("Success", "RSA key expiration extended successfully")
                 passphrase_window.destroy()
+                if callback:
+                    callback()
             except Exception as e:
                 log_action(self.email, "extend_rsa_keys", f"failed: {str(e)}")
                 error_label.config(text=f"Error: {str(e)}")
@@ -358,21 +360,8 @@ class DashboardWindow:
 
     def view_keys(self):
         safe_email = self.email.replace("@", "_at_").replace(".", "_dot_")
-        current_key_path = Path(f"./data/{safe_email}/rsa_keypair.json")
-        now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
-        try:
-            with open(current_key_path, "r") as f:
-                key_data = json.load(f)
-                key_data = update_key_status(key_data, now)
-                with open(current_key_path, "w") as f:
-                    json.dump(key_data, f, indent=4)
-            update_public_key_store(self.email)
-            log_action(self.email, "view_keys", "success: Updated key status")
-            key_window = tk.Toplevel(self.root)
-            KeyStorageWindow(key_window, self, safe_email)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            log_action(self.email, "view_keys", f"failed: {str(e)}")
-            messagebox.showerror("Error", "No key found")
+        key_window = tk.Toplevel(self.root)
+        KeyStorageWindow(key_window, self, safe_email)
 
     def generate_qr_code(self):
         safe_email = self.email.replace("@", "_at_").replace(".", "_dot_")
@@ -435,61 +424,150 @@ class DashboardWindow:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to read QR code: {str(e)}")
 
-    def search_public_key(self):
+    def search_public_key_ui(self):
         search_window = tk.Toplevel(self.root)
-        search_window.title("Search Public Key")
+        search_window.title("Tìm kiếm Public Key")
         search_window.transient(self.root)
         search_window.grab_set()
 
-        tk.Label(search_window, text="Enter Email to Search").pack(pady=5)
-        email_entry = tk.Entry(search_window)
-        email_entry.pack(pady=5)
+        tk.Label(search_window, text="Nhập Email để tìm kiếm").pack(pady=5)
+        search_entry = tk.Entry(search_window)
+        search_entry.pack(pady=5)
         error_label = tk.Label(search_window, text="", fg="red")
         error_label.pack()
 
         def perform_search():
-            search_email = email_entry.get().strip()
+            search_email = search_entry.get().strip()
             if not search_email:
-                error_label.config(text="Email is required")
+                error_label.config(text="Email là bắt buộc")
                 return
 
             try:
                 result, message, similar_emails = search_public_key(self.email, search_email)
+                log_action(self.email, "search_public_key_ui", f"result: {result}")
 
                 if result is None:
                     if similar_emails:
                         similar_emails_str = "\n".join(similar_emails)
-                        messagebox.showinfo("Not Found", f"{message}\nSimilar emails:\n{similar_emails_str}")
+                        messagebox.showinfo("Không tìm thấy", f"{message}\nEmail tương tự:\n{similar_emails_str}")
                     else:
-                        messagebox.showinfo("Not Found", message)
+                        messagebox.showinfo("Không tìm thấy", message)
                     return
 
                 result_window = tk.Toplevel(self.root)
                 result_window.title(f"Public Key - {search_email}")
                 result_window.transient(self.root)
                 result_window.grab_set()
+                result_window.configure(padx=20, pady=20)
 
-                tk.Label(result_window, text=f"Email: {search_email}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Created: {datetime.fromisoformat(result['created']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Expires: {datetime.fromisoformat(result['expires']).strftime('%Y-%m-%d')}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Status: {result['status']}", anchor="w").pack(fill="x", pady=5)
-                tk.Label(result_window, text=f"Public Key: {result['public_key'][:20]}...", anchor="w").pack(fill="x", pady=5)
-                tk.Button(result_window, text="Close", command=result_window.destroy).pack(pady=10)
+                # Frame for key details
+                key_frame = tk.Frame(result_window)
+                key_frame.pack(fill="both", pady=10)
 
+                # Error label for invalid data
+                error_label_result = tk.Label(key_frame, text="", fg="red")
+                error_label_result.pack(anchor="w", pady=5)
+
+                # Entry widgets for key details
+                tk.Label(key_frame, text="Email:").pack(anchor="w")
+                email_entry = tk.Entry(key_frame, width=50)
+                email_entry.insert(0, search_email)
+                email_entry.config(state="readonly")
+                email_entry.pack(fill="x", pady=2)
+                log_action(self.email, "search_public_key_ui", f"email_entry: {search_email}")
+
+                tk.Label(key_frame, text="Khóa công khai (Rút gọn):").pack(anchor="w")
+                public_key_entry = tk.Entry(key_frame, width=50)
+                truncated_key = result["public_key"][:20] + "..." if len(result["public_key"]) > 20 else result[
+                    "public_key"]
+                public_key_entry.insert(0, truncated_key)
+                public_key_entry.config(state="readonly")
+                public_key_entry.pack(fill="x", pady=2)
+                log_action(self.email, "search_public_key_ui", f"public_key_entry: {truncated_key}")
+
+                tk.Label(key_frame, text="Ngày tạo:").pack(anchor="w")
+                created_entry = tk.Entry(key_frame, width=50)
+                created = datetime.fromisoformat(result["created"]).strftime("%Y-%m-%d %H:%M:%S")
+                created_entry.insert(0, created)
+                created_entry.config(state="readonly")
+                created_entry.pack(fill="x", pady=2)
+                log_action(self.email, "search_public_key_ui", f"created_entry: {created}")
+
+                tk.Label(key_frame, text="Ngày hết hạn:").pack(anchor="w")
+                expires_entry = tk.Entry(key_frame, width=50)
+                expires = datetime.fromisoformat(result["expires"]).strftime("%Y-%m-%d %H:%M:%S")
+                expires_entry.insert(0, expires)
+                expires_entry.config(state="readonly")
+                expires_entry.pack(fill="x", pady=2)
+                log_action(self.email, "search_public_key_ui", f"expires_entry: {expires}")
+
+                tk.Label(key_frame, text="Trạng thái:").pack(anchor="w")
+                status_entry = tk.Entry(key_frame, width=50)
+                status = result["status"]
+                status_entry.insert(0, status)
+                status_entry.config(state="readonly")
+                status_entry.pack(fill="x", pady=2)
+                log_action(self.email, "search_public_key_ui", f"status_entry: {status}")
+
+                tk.Label(key_frame, text="Số ngày còn lại:").pack(anchor="w")
+                valid_days_entry = tk.Entry(key_frame, width=50)
+                now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+                expires_dt = datetime.fromisoformat(result["expires"])
+                valid_days = (expires_dt - now).days
+                valid_days_left = str(valid_days) if result["status"] != "revoked" else "Revoked"
+                valid_days_entry.insert(0, valid_days_left)
+                valid_days_entry.config(state="readonly")
+                valid_days_entry.pack(fill="x", pady=2)
+                log_action(self.email, "search_public_key_ui", f"valid_days_entry: {valid_days_left}")
+
+                # Force UI update
+                key_frame.update()
+
+                # Validate required fields
+                required_fields = ["public_key", "created", "expires", "status"]
+                if not all(field in result for field in required_fields):
+                    error_label_result.config(text="Dữ liệu khóa không đầy đủ.")
+                    log_action(self.email, "search_public_key_ui", f"failed: Missing required fields {result}")
+                    return
+
+                # QR code display
+                tk.Label(key_frame, text="QR Code Khóa công khai:").pack(anchor="w", pady=5)
+                qr_label = tk.Label(key_frame)
+                qr_label.pack(pady=5)
+                safe_search_email = search_email.replace("@", "_at_").replace(".", "_dot_")
+                qr_path = Path(f"./data/{safe_search_email}/public_key_qr.png")
+                try:
+                    img = Image.open(qr_path)
+                    img = img.resize((150, 150), Image.Resampling.LANCZOS)
+                    qr_image = ImageTk.PhotoImage(img)
+                    qr_label.config(image=qr_image)
+                    qr_label.image = qr_image
+                    log_action(self.email, "search_public_key_ui", f"qr_code loaded: {qr_path}")
+                except FileNotFoundError:
+                    log_action(self.email, "search_public_key_ui", f"qr_code not found: {qr_path}")
+
+                # Close button
+                button_frame = tk.Frame(result_window)
+                button_frame.pack(pady=10)
+                tk.Button(button_frame, text="Đóng", command=result_window.destroy).pack(side=tk.LEFT, padx=5)
+
+                # Adjust window size
                 result_window.update_idletasks()
-                req_width = max(result_window.winfo_reqwidth() + 40, 400)
-                req_height = max(result_window.winfo_reqheight() + 40, 300)
+                req_width = max(key_frame.winfo_reqwidth() + 60, 600)
+                req_height = max(key_frame.winfo_reqheight() + 100, 500)
                 x = (result_window.winfo_screenwidth() - req_width) // 2
                 y = (result_window.winfo_screenheight() - req_height) // 2
                 result_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+                result_window.minsize(600, 500)
 
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to search public key: {str(e)}")
+                log_action(self.email, "search_public_key_ui", f"failed: {str(e)}")
+                messagebox.showerror("Lỗi", f"Không thể tìm kiếm public key: {str(e)}")
 
         button_frame = tk.Frame(search_window)
         button_frame.pack(pady=10)
-        tk.Button(button_frame, text="Search", command=perform_search).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Cancel", command=search_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Tìm kiếm", command=perform_search).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy", command=search_window.destroy).pack(side=tk.LEFT, padx=5)
 
         search_window.update_idletasks()
         req_width = search_window.winfo_reqwidth() + 40

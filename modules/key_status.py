@@ -10,11 +10,12 @@ def update_key_status(key_data, now):
     """Update the status of a key based on its expiration and current time."""
     expires = datetime.fromisoformat(key_data["expires"])
     valid_days = (expires - now).days
-    if key_data["status"] == "in used":
-        if valid_days < 0:
-            key_data["status"] = "expired"
-        elif valid_days <= 30:
-            key_data["status"] = "almost expired"
+    if valid_days < 0:
+        key_data["status"] = "expired"
+    elif valid_days <= 30:
+        key_data["status"] = "almost expired"
+    else:
+        key_data["status"] = "in used"
     return key_data
 
 def update_public_key_store(email: str):
