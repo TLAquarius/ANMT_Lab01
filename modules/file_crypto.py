@@ -79,6 +79,7 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
                     "auth_tag": base64.b64encode(auth_tag).decode()
                 })
                 index += 1
+                log_action(sender_email, "Mã hóa File", f"Success: Đã mã block {index} của file {input_file.name}")
 
         # Create output paths
         safe_recipient_email = recipient_email.replace("@", "_at_").replace(".", "_dot_")
