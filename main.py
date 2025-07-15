@@ -36,33 +36,17 @@ class MainWindow:
         self.root.geometry(f"{final_width}x{final_height}+{x}+{y}")
         self.root.minsize(self.min_width, self.min_height)
 
-    def disable_buttons(self):
-        self.signup_button.config(state="disabled")
-        self.login_button.config(state="disabled")
-
-    def enable_buttons(self):
-        self.signup_button.config(state="normal")
-        self.login_button.config(state="normal")
-
     def open_signup(self):
-        self.disable_buttons()
         signup_window = tk.Toplevel(self.root)
         SignupWindow(signup_window, self)
 
     def open_login(self):
-        self.disable_buttons()
         login_window = tk.Toplevel(self.root)
         LoginWindow(login_window, self)
 
     def open_reset(self):
-        self.disable_buttons()
         reset_window = tk.Toplevel(self.root)
         RecoveryWindow(reset_window, self)
-
-    def open_admin(self, admin_email):
-        self.disable_buttons()
-        admin_window = tk.Toplevel(self.root)
-        AdminWindow(admin_window, self, admin_email)
 
 if __name__ == "__main__":
     root = tk.Tk()

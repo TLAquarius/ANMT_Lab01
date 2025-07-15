@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageTk
+from modules.recovery import change_passphrase
 from modules.rsa_keys import generate_rsa_keypair, update_public_key_store, derive_key
-from pyzbar.pyzbar import decode
 from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
@@ -51,16 +51,17 @@ class DashboardWindow:
         if is_admin(self.email):
             tk.Button(root, text="Quản Trị", command=self.open_admin).pack(pady=10)
 
-        tk.Button(root, text="Update Information", command=self.open_update_info).pack(pady=10)
-        tk.Button(root, text="View Keys", command=self.view_keys).pack(pady=10)
-        tk.Button(root, text="Generate Public Key QR Code", command=self.generate_qr_code).pack(pady=10)
-        tk.Button(root, text="Read Public Key QR Code", command=self.read_qr_code).pack(pady=10)
-        tk.Button(root, text="Search Public Key", command=self.search_public_key_ui).pack(pady=10)
-        tk.Button(root, text="Encrypt File", command=self.encrypt_file).pack(pady=10)
-        tk.Button(root, text="Decrypt File", command=self.decrypt_file).pack(pady=10)
-        tk.Button(root, text="File Sign", command=self.sign_file).pack(pady=10)
-        tk.Button(root, text="Signature Verify", command=self.verify_signature).pack(pady=10)
-        tk.Button(root, text="Logout", command=self.logout).pack(pady=10)
+        tk.Button(root, text="Cập nhật thông tin", command=self.open_update_info).pack(pady=10)
+        tk.Button(root, text="Đổi passphrase", command=self.open_change_passphrase).pack(pady=10)
+        tk.Button(root, text="Quản lý key", command=self.view_keys).pack(pady=10)
+        tk.Button(root, text="Tạo mã QR public key", command=self.generate_qr_code).pack(pady=10)
+        tk.Button(root, text="Đọc mã QR public key và lưu", command=self.read_qr_code).pack(pady=10)
+        tk.Button(root, text="Tìm public key", command=self.search_public_key_ui).pack(pady=10)
+        tk.Button(root, text="Mã hóa File", command=self.encrypt_file).pack(pady=10)
+        tk.Button(root, text="Giải mã File", command=self.decrypt_file).pack(pady=10)
+        tk.Button(root, text="Ký số File", command=self.sign_file).pack(pady=10)
+        tk.Button(root, text="Xác minh chữ ký", command=self.verify_signature).pack(pady=10)
+        tk.Button(root, text="Đăng xuất", command=self.logout).pack(pady=10)
 
         self.adjust_window_size()
 
@@ -199,6 +200,77 @@ class DashboardWindow:
         x = (update_window.winfo_screenwidth() - req_width) // 2
         y = (update_window.winfo_screenheight() - req_height) // 2
         update_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+    def open_change_passphrase(self):
+        """Open a window to change the user's passphrase."""
+        change_window = tk.Toplevel(self.root)
+        change_window.title("Change Passphrase")
+        change_window.transient(self.root)
+        change_window.grab_set()
+        change_window.configure(padx=20, pady=20)
+
+        tk.Label(change_window, text="Old Passphrase").pack(pady=5)
+        old_passphrase_entry = tk.Entry(change_window, show="*")
+        old_passphrase_entry.pack(pady=5)
+
+        tk.Label(change_window, text="New Passphrase").pack(pady=5)
+        new_passphrase_entry = tk.Entry(change_window, show="*")
+        new_passphrase_entry.pack(pady=5)
+
+        error_label = tk.Label(change_window, text="", fg="red")
+        error_label.pack(pady=5)
+
+        def perform_change():
+            old_passphrase = old_passphrase_entry.get().strip()
+            new_passphrase = new_passphrase_entry.get().strip()
+
+            if not old_passphrase:
+                error_label.config(text="Old passphrase is required")
+                return
+
+            valid, error = validate_passphrase(old_passphrase)
+            if not valid:
+                error_label.config(text=error)
+                return
+
+            success, message = verify_passphrase(self.email, old_passphrase)
+            if not success:
+                error_label.config(text="Invalid Passphrase")
+                log_action(self.email, "change_passphrase", f"failed: {message}")
+                return
+
+            if not new_passphrase:
+                error_label.config(text="New passphrase is required")
+                return
+
+            valid, error = validate_passphrase(new_passphrase)
+            if not valid:
+                error_label.config(text=error)
+                return
+
+            # Call backend function to change passphrase
+            try:
+                success, message = change_passphrase(self.email, old_passphrase, new_passphrase)
+                if success:
+                    messagebox.showinfo("Success", message, parent=change_window)
+                    change_window.destroy()
+                else:
+                    error_label.config(text=message)
+            except Exception as e:
+                error_label.config(text=f"Error: {str(e)}")
+                log_action(self.email, "change_passphrase", f"failed: {str(e)}")
+
+        button_frame = tk.Frame(change_window)
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Change", command=perform_change).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Cancel", command=change_window.destroy).pack(side=tk.LEFT, padx=5)
+
+        change_window.update_idletasks()
+        req_width = max(change_window.winfo_reqwidth() + 40, 300)
+        req_height = max(change_window.winfo_reqheight() + 40, 200)
+        x = (change_window.winfo_screenwidth() - req_width) // 2
+        y = (change_window.winfo_screenheight() - req_height) // 2
+        change_window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
     def create_new_keys(self, callback=None):
         passphrase_window = tk.Toplevel(self.root)

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
-from modules.auth import reset_passphrase, validate_passphrase, derive_key
-from modules.rsa_keys import generate_rsa_keypair, update_public_key_store
+from modules.auth import validate_passphrase, derive_key
+from modules.recovery import recovery_passphrase
 from modules.logger import log_action
 from pathlib import Path
 import json
@@ -88,7 +88,7 @@ class RecoveryWindow:
             user = next((u for u in users if u["email"] == email), None)
             if not user:
                 self.error_label.config(text="Email không tồn tại")
-                log_action(email, "reset_passphrase", "failed: Email not found")
+                log_action(email, "recovery_passphrase", "failed: Email not found")
                 return
 
             recovery_code_hash = base64.b64decode(user["recovery_code_hash"])
@@ -96,10 +96,10 @@ class RecoveryWindow:
             input_hash = derive_key(recovery_code, recovery_salt)
             if recovery_code_hash != input_hash:
                 self.error_label.config(text="Recovery code không hợp lệ")
-                log_action(email, "reset_passphrase", "failed: Invalid recovery code")
+                log_action(email, "recovery_passphrase", "failed: Invalid recovery code")
                 return
 
-            success, message = reset_passphrase(email, recovery_code, new_passphrase)
+            success, message =recovery_passphrase(email, recovery_code, new_passphrase)
             if success:
                 messagebox.showinfo("Thành công", message)
                 self.main_window.enable_buttons()  # Re-enable main window buttons

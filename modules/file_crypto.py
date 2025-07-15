@@ -44,6 +44,12 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
             log_action(sender_email, "encrypt_file", f"failed: Recipient {recipient_email} has no valid public key - {str(e)}")
             raise ValueError(f"Recipient {recipient_email} does not have a valid public key")
 
+        now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+        expires = datetime.fromisoformat(public_key["expires"])
+        if((expires - now).days < 0):
+            log_action(sender_email, "encrypt_file",f"failed: Recipient {recipient_email} key expired")
+            raise ValueError(f"Recipient {recipient_email} public key expired")
+
         # Generate AES session key
         ksession = AESGCM.generate_key(bit_length=256)
         aesgcm = AESGCM(ksession)
