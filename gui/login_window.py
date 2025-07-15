@@ -1,8 +1,8 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 from PIL import Image, ImageTk
-from modules.auth import verify_login, generate_otp, generate_totp_qr, verify_totp
-from modules.admin import is_admin
+from modules.auth import verify_login
+from modules.mfa import generate_otp, generate_totp_qr, verify_totp
 from modules.logger import log_action
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -107,15 +107,14 @@ class LoginWindow:
             self.code_entry.pack()
         else:
             self.qr_label.pack_forget()
-            qr_path = generate_totp_qr(self.user["email"], self.user["totp_secret"])
-            img = Image.open(qr_path)
+            img = generate_totp_qr(self.user["email"], self.user["totp_secret"])
             img = img.resize((150, 150), Image.Resampling.LANCZOS)
             self.qr_image = ImageTk.PhotoImage(img)
             self.qr_label.config(image=self.qr_image)
             self.qr_label.pack()
             self.code_label.pack()
             self.code_entry.pack()
-            log_action(self.user['email'], "generate_totp_qr", f"success: QR saved at {qr_path}")
+            log_action(self.user['email'], "generate_totp_qr", f"success: shown QR once")
         self.adjust_window_size()
 
     def verify_mfa(self):

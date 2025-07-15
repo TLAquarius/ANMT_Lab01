@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.rsa_keys import load_current_public_key, get_private_key_for_decryption
 from modules.logger import log_action
+import hashlib
 
 # Constants
 BLOCK_SIZE = 1024 * 1024  # 1MB
@@ -95,9 +96,15 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
 
         # Create output paths
         safe_recipient_email = recipient_email.replace("@", "_at_").replace(".", "_dot_")
-        storage_dir = Path(f"data/{safe_recipient_email}/storage")
+        storage_dir = Path(f"data/{safe_recipient_email}/storage/")
         storage_dir.mkdir(parents=True, exist_ok=True)
-        enc_path = storage_dir / f"{input_file.stem}_encrypted.enc"
+
+        salt = os.urandom(16)  # 128-bit random salt
+        hasher = hashlib.sha256()
+        hasher.update(salt + (input_file.name).encode('utf-8'))
+        hashed_file_name = hasher.hexdigest()
+
+        enc_path = storage_dir / f"{hashed_file_name}.enc"
 
         # Create .enc file package
         enc_package = {
@@ -118,13 +125,12 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
         # Write .key file if split_key is True
         key_path = None
         if split_key:
-            key_path = storage_dir / f"{input_file.stem}_encrypted.key"
+            key_path = storage_dir / f"{hashed_file_name}.key"
             key_package = {
-                "metadata": {  # Minimal metadata for identification
-                    "sender_email": sender_email,
-                    "recipient_email": recipient_email,
-                    "file_name": input_file.name,
-                    "timestamp": metadata["timestamp"]
+                "encrypted_metadata": {
+                    "iv": base64.b64encode(metadata_iv).decode(),
+                    "ciphertext": base64.b64encode(metadata_ciphertext).decode(),
+                    "auth_tag": base64.b64encode(metadata_auth_tag).decode()
                 },
                 "encrypted_session_key": base64.b64encode(ksession_encrypted).decode()
             }
@@ -186,7 +192,7 @@ def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[
         try:
             private_key = get_private_key_for_decryption(recipient_email, passphrase, metadata_timestamp)
         except Exception as e:
-            raise ValueError(f"Failed to decrypt private key: Invalid passphrase or key - {str(e)}")
+            raise ValueError(f"Failed to decrypt private key:\n Invalid passphrase or key - {str(e)}")
 
         # Decrypt AES session key
         ksession = private_key.decrypt(

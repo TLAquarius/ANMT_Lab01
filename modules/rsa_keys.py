@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.logger import log_action
+from modules.key_status import update_public_key_store
 
 PUBLIC_KEY_DIR = Path("./data/public_keys")
 
@@ -18,46 +19,6 @@ def derive_key(passphrase: str, salt: bytes) -> bytes:
         algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000,
     )
     return kdf.derive(passphrase.encode())
-
-def update_key_status(key_data, now):
-    """Update the status of a key based on its expiration and current time."""
-    expires = datetime.fromisoformat(key_data["expires"])
-    valid_days = (expires - now).days
-    if key_data["status"] == "in used":
-        if valid_days < 0:
-            key_data["status"] = "expired"
-        elif valid_days <= 30:
-            key_data["status"] = "almost expired"
-    return key_data
-
-def update_public_key_store(email: str):
-    """Update public key store with the current key for the user (single dict)."""
-    PUBLIC_KEY_DIR.mkdir(parents=True, exist_ok=True)
-    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-    public_key_path = PUBLIC_KEY_DIR / f"{safe_email}.json"
-    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
-
-    # Load current key
-    key_data = {}
-    try:
-        with open(f"./data/{safe_email}/rsa_keypair.json", "r") as f:
-            key_data = json.load(f)
-            key_data = update_key_status(key_data, now)
-            with open(f"./data/{safe_email}/rsa_keypair.json", "w") as f:
-                json.dump(key_data, f, indent=4)
-        public_key_data = {
-            "public_key": key_data["public_key"],
-            "created": key_data["created"],
-            "expires": key_data["expires"],
-            "status": key_data["status"],
-            "email": email
-        }
-        with open(public_key_path, "w") as f:
-            json.dump(public_key_data, f, indent=4)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        log_action(email, "update_public_key_store", f"failed: {str(e)}")
-        if public_key_path.exists():
-            public_key_path.unlink()
 
 def load_current_public_key(recipient_email):
     """Load recipient's RSA public key from file."""
@@ -292,23 +253,6 @@ def decrypt_user_private_key_with_recovery(email: str, recovery_code: str) -> tu
         log_action(email, "decrypt_user_private_key_with_recovery", f"failed: {str(e)}")
         return False, None, f"Không thể giải mã khóa riêng: {str(e)}"
 
-
-def store_new_public_key_from_qr(safe_email: str, key_data: dict) -> bool:
-    """Store a new public key from a QR code if it's not already in the store."""
-    public_key_path = PUBLIC_KEY_DIR / f"{safe_email}.json"
-    PUBLIC_KEY_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(public_key_path, "r") as f:
-            existing_key = json.load(f)
-        if existing_key == key_data:
-            log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),"store_new_public_key_from_qr", "failed: Key already exists")
-            return False
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    with open(public_key_path, "w") as f:
-        json.dump(key_data, f, indent=4)
-    log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),"store_new_public_key_from_qr", "success: Stored new public key")
-    return True
 def get_active_private_key(email: str, passphrase: str) -> object:
     """
     Lấy khóa riêng đang hoạt động (chưa hết hạn) của người dùng để ký.

@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageTk
-from modules.rsa_keys import generate_rsa_keypair, update_key_status, update_public_key_store, derive_key
+from modules.rsa_keys import generate_rsa_keypair, update_public_key_store, derive_key
+from modules.key_status import update_key_status
 from modules.qr_utils import generate_qr_for_public_key, read_qr
 from modules.logger import log_action
 from modules.pubkey_search import search_public_key
@@ -588,8 +589,20 @@ class DashboardWindow:
             if not enc_path:
                 error_label.config(text="Encrypted file is required")
                 return
+
             if not passphrase:
                 error_label.config(text="Passphrase is required")
+                return
+
+            valid, error = validate_passphrase(passphrase)
+            if not valid:
+                error_label.config(text=error)
+                return
+
+            success, message = verify_passphrase(self.email, passphrase)
+            if not success:
+                error_label.config(text="Invalid Passphrase")
+                log_action(self.email, "decrypt_file", f"failed: {message}")
                 return
 
             try:

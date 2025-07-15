@@ -6,9 +6,10 @@ import qrcode
 from pyzbar.pyzbar import decode
 from PIL import Image
 import base64
-from modules.rsa_keys import update_key_status, store_new_public_key_from_qr
+from modules.key_status import update_key_status
 from modules.logger import log_action
 
+PUBLIC_KEY_DIR = Path("./data/public_keys")
 
 def generate_qr_for_public_key(email: str, safe_email: str) -> tuple[Path, str]:
     """Generate a QR code with the user's current public key."""
@@ -37,6 +38,22 @@ def generate_qr_for_public_key(email: str, safe_email: str) -> tuple[Path, str]:
     log_action(email, "generate_qr_code", f"success: QR code saved at {path_out}")
     return path_out, f"QR code saved at {path_out}"
 
+def store_new_public_key_from_qr(safe_email: str, key_data: dict) -> bool:
+    """Store a new public key from a QR code if it's not already in the store."""
+    public_key_path = PUBLIC_KEY_DIR / f"{safe_email}.json"
+    PUBLIC_KEY_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(public_key_path, "r") as f:
+            existing_key = json.load(f)
+        if existing_key == key_data:
+            log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),"store_new_public_key_from_qr", "failed: Key already exists")
+            return False
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    with open(public_key_path, "w") as f:
+        json.dump(key_data, f, indent=4)
+    log_action(safe_email.replace("_at_", "@").replace("_dot_", "."),"store_new_public_key_from_qr", "success: Stored new public key")
+    return True
 
 def read_qr(email: str, qr_path: str) -> tuple[dict, str]:
     """Read a QR code and store its public key if new."""

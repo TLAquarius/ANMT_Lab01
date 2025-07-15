@@ -60,13 +60,16 @@ def sign_file(file_path: str, signer_email: str, passphrase: str) -> tuple[bool,
         }
 
         # Lưu tệp .sig
-        safe_email = signer_email.replace("@", "_at_").replace(".", "_dot_")
-        signature_dir = Path(f"./data/{safe_email}/signatures")
+        signature_dir = Path(f"./data/signatures")
         signature_dir.mkdir(parents=True, exist_ok=True)
         signature_path = signature_dir / f"{input_file.name}.sig"
 
         with open(signature_path, "w") as f:
             json.dump(sig_data, f, indent=4)
+
+        original_file = signature_dir / f"{input_file.name}"
+        with open(original_file, "wb") as f:
+            f.write(data_to_sign)
 
         log_action(signer_email, "sign_file", f"success: Signed {input_file.name}, saved to {signature_path}")
         return True, f"Tệp đã được ký thành công! Chữ ký được lưu tại:\n{signature_path}", str(signature_path)
@@ -155,7 +158,7 @@ def verify_signature(original_file_path: str, signature_file_path: str, verifier
                 }
                 found_valid_key = True
                 break # Thoát khỏi vòng lặp khi đã tìm thấy khóa hợp lệ
-            except Exception:
+            except Exception as e:
                 # Bỏ qua lỗi và thử với khóa tiếp theo
                 continue
 

@@ -5,13 +5,11 @@ import re
 import random
 import string
 import pyotp
-import qrcode
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from modules.rsa_keys import generate_rsa_keypair, update_public_key_store, decrypt_user_private_key_with_recovery, derive_key
-from modules.admin import is_admin
 from pathlib import Path
 from modules.logger import log_action
 
@@ -137,13 +135,6 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
         log_action(email, "sign_up", f"failed: {str(e)}")
         return False, f"Error: {str(e)}", ""
 
-def generate_otp() -> tuple[str, str, str]:
-    """Generate a 6-digit OTP with creation/expiration times."""
-    otp = ''.join(random.choices(string.digits, k=6))
-    created = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).isoformat()
-    expires = (datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")) + timedelta(minutes=5)).isoformat()
-    return otp, created, expires
-
 def get_remaining_lockout_time(lockout_until: str) -> int:
     """Calculate remaining lockout time in seconds, or 0 if not locked."""
     if not lockout_until:
@@ -202,24 +193,6 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
 
     log_action(email, "login", "failed: Email not found")
     return False, None, "Tên người dùng hoặc mật khẩu bị sai"
-
-def generate_totp_qr(email: str, totp_secret: str) -> str:
-    """Generate TOTP QR code and save to user's folder."""
-    totp = pyotp.TOTP(totp_secret)
-    uri = totp.provisioning_uri(name=email, issuer_name="CryptoDemo")
-    qr = qrcode.QRCode()
-    qr.add_data(uri)
-    qr.make(fit=True)
-    safe_email = email.replace("@", "_at_").replace(".", "_dot_")
-    qr_path = f"./data/{safe_email}/qrTOTP.png"
-    os.makedirs(os.path.dirname(qr_path), exist_ok=True)
-    qr.make_image(fill_color="black", back_color="white").save(qr_path)
-    return qr_path
-
-def verify_totp(totp_secret: str, code: str) -> bool:
-    """Verify TOTP code."""
-    totp = pyotp.TOTP(totp_secret)
-    return totp.verify(code)
 
 def reset_passphrase(email: str, recovery_code: str, new_passphrase: str) -> tuple[bool, str]:
     """Reset passphrase and re-encrypt or generate RSA private key."""
