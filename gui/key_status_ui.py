@@ -143,7 +143,7 @@ class KeyStorageWindow:
         valid_days_left = str(valid_days) if status != "revoked" else "Revoked"
 
         # Truncate public key for display
-        truncated_key = public_key[60] + "..." if len(public_key) > 60 else public_key
+        truncated_key = public_key[:60] + "..." if len(public_key) > 60 else public_key
 
         # Update entries
         for entry, value in [

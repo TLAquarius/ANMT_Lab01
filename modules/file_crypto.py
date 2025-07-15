@@ -30,12 +30,6 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
             log_action(sender_email, "Mã hóa file", f"Failed: Người nhận {recipient_email} không có public key hợp lệ - {str(e)}")
             raise ValueError(f"Người nhận {recipient_email} không có public key hợp lệ")
 
-        now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
-        expires = datetime.fromisoformat(public_key["expires"])
-        if((expires - now).days < 0):
-            log_action(sender_email, "Mã hóa file",f"Failed: Public key của {recipient_email} bị hết hạn")
-            raise ValueError(f"Failed: Public key của {recipient_email} bị hết hạnd")
-
         # Generate AES session key
         ksession = AESGCM.generate_key(bit_length=256)
         aesgcm = AESGCM(ksession)

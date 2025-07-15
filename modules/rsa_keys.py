@@ -25,8 +25,14 @@ def load_current_public_key(recipient_email):
     safe_email = recipient_email.replace("@", "_at_").replace(".", "_dot_")
     update_public_key_store(recipient_email)
     try:
-        with open(f"./data/{safe_email}/rsa_keypair.json", "r") as f:
+        with open(f"./data/public_keys/{safe_email}.json", "r") as f:
             key_data = json.load(f)
+
+        now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+        expires = datetime.fromisoformat(key_data["expires"])
+        if ((expires - now).days < 0):
+            log_action(recipient_email, "Load public key hiện tại", f"Failed: Public key của {recipient_email} bị hết hạn")
+            raise ValueError(f"Public key của {recipient_email} bị hết hạnd")
         public_pem = base64.b64decode(key_data["public_key"])
         public_key = serialization.load_pem_public_key(public_pem)
         return public_key
@@ -80,7 +86,7 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
                 "iv": base64.b64encode(new_iv).decode(),
                 "renew": time_now.isoformat(),
                 "expires": (time_now + timedelta(days=90)).isoformat(),
-                "status": "in used"
+                "status": "Còn hạn"
             })
             if recovery_enc_data:
                 current_key_data.update(recovery_enc_data)
@@ -144,7 +150,7 @@ def generate_rsa_keypair(email: str, passphrase: str, recovery_code: str = None,
         "created": new_time.isoformat(),
         "expires": (new_time + timedelta(days=90)).isoformat(),
         "renew": "",
-        "status": "in used",
+        "status": "Còn hạn",
         "key_size": 2048,
         "format": "PEM",
         "algorithm": "RSA",
