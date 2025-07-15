@@ -16,39 +16,25 @@ BLOCK_SIZE = 1024 * 1024  # 1MB
 FILE_SIZE_THRESHOLD = 5 * 1024 * 1024  # 5MB
 
 def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_email: str, split_key: bool = False) -> tuple[str, str | None]:
-    """Encrypt a file and its metadata with block-based encryption and optional key splitting.
-
-    Args:
-        input_path: Path to the input file.
-        recipient_email: Email of the recipient.
-        sender_email: Email of the sender (for logging and metadata).
-        split_key: If True, save session key in a separate .key file.
-
-    Returns:
-        (enc_path, key_path): Paths to the .enc file and .key file (if split_key=True).
-
-    Raises:
-        ValueError: If recipient has no valid public key or input file is invalid.
-        Exception: For other encryption errors.
-    """
+    """Encrypt a file and its metadata with block-based encryption and optional key splitting."""
     try:
         # Validate input file
         input_file = Path(input_path)
         if not input_file.exists():
-            raise ValueError(f"Input file {input_path} does not exist")
+            raise ValueError(f"File {input_path} không tồn tại")
 
         # Load recipient's public key
         try:
             public_key = load_current_public_key(recipient_email)
         except Exception as e:
-            log_action(sender_email, "encrypt_file", f"failed: Recipient {recipient_email} has no valid public key - {str(e)}")
-            raise ValueError(f"Recipient {recipient_email} does not have a valid public key")
+            log_action(sender_email, "Mã hóa file", f"Failed: Người nhận {recipient_email} không có public key hợp lệ - {str(e)}")
+            raise ValueError(f"Người nhận {recipient_email} không có public key hợp lệ")
 
         now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
         expires = datetime.fromisoformat(public_key["expires"])
         if((expires - now).days < 0):
-            log_action(sender_email, "encrypt_file",f"failed: Recipient {recipient_email} key expired")
-            raise ValueError(f"Recipient {recipient_email} public key expired")
+            log_action(sender_email, "Mã hóa file",f"Failed: Public key của {recipient_email} bị hết hạn")
+            raise ValueError(f"Failed: Public key của {recipient_email} bị hết hạnd")
 
         # Generate AES session key
         ksession = AESGCM.generate_key(bit_length=256)
@@ -142,17 +128,17 @@ def encrypt_file_with_metadata(input_path: str, recipient_email: str, sender_ema
             }
             with open(key_path, "w") as f:
                 json.dump(key_package, f, indent=4)
-            log_action(sender_email, "encrypt_file", f"success: {enc_path}, key: {key_path}")
+            log_action(sender_email, "Mã hóa file", f"Success: {enc_path}, key: {key_path}")
             return str(enc_path), str(key_path)
 
-        log_action(sender_email, "encrypt_file", f"success: {enc_path}")
+        log_action(sender_email, "Mã hóa file", f"Success: {enc_path}")
         return str(enc_path), None
 
     except ValueError as e:
-        log_action(sender_email, "encrypt_file", f"failed: {str(e)}")
+        log_action(sender_email, "Mã hóa file", f"Failed: {str(e)}")
         raise
     except Exception as e:
-        log_action(sender_email, "encrypt_file", f"failed: Unexpected error - {str(e)}")
+        log_action(sender_email, "Mã hóa file", f"Failed: Không rõ nguyên nhân - {str(e)}")
         raise
 
 def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[str, dict]:
@@ -174,7 +160,7 @@ def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[
         # Validate .enc file
         enc_file = Path(enc_path)
         if not enc_file.exists():
-            raise ValueError(f"Encrypted file {enc_path} does not exist")
+            raise ValueError(f"File cần giải mã {enc_path} không tồn tại")
 
         # Load .enc file
         with open(enc_file, "r") as f:
@@ -198,7 +184,7 @@ def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[
         try:
             private_key = get_private_key_for_decryption(recipient_email, passphrase, metadata_timestamp)
         except Exception as e:
-            raise ValueError(f"Failed to decrypt private key:\n Invalid passphrase or key - {str(e)}")
+            raise ValueError(f"Giải mã private key thất bại - {str(e)}")
 
         # Decrypt AES session key
         ksession = private_key.decrypt(
@@ -213,7 +199,7 @@ def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[
 
         # Decrypt metadata
         if "encrypted_metadata" not in enc_package:
-            raise ValueError("No encrypted metadata found in .enc file")
+            raise ValueError("Không tìm thấy metadata trong file .enc")
         metadata_enc = enc_package["encrypted_metadata"]
         metadata_iv = base64.b64decode(metadata_enc["iv"])
         metadata_ciphertext = base64.b64decode(metadata_enc["ciphertext"])
@@ -222,19 +208,19 @@ def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[
         try:
             metadata = json.loads(metadata_bytes.decode())
         except json.JSONDecodeError:
-            raise ValueError("Invalid metadata format after decryption")
+            raise ValueError("Định dạng metadata sau khi giải mã không hợp lệ")
 
         # Validate metadata
         required_fields = ["sender_email", "recipient_email", "file_name", "timestamp"]
         if not all(k in metadata for k in required_fields):
-            raise ValueError("Incomplete metadata in encrypted file")
+            raise ValueError("Định dạng metadata sau khi giải mã không hợp lệ")
 
         # Verify all blocks are present
         blocks = sorted(enc_package["blocks"], key=lambda x: x["index"])
         expected_indices = set(range(len(blocks)))
         actual_indices = set(block["index"] for block in blocks)
         if expected_indices != actual_indices:
-            raise ValueError(f"Missing or duplicate blocks in encrypted file")
+            raise ValueError(f"Thiếu block hay block bị lập lại")
 
         # Decrypt blocks
         plaintext = b""
@@ -258,12 +244,12 @@ def decrypt_file(enc_path: str, passphrase: str, recipient_email: str) -> tuple[
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=4)
 
-        log_action(recipient_email, "decrypt_file", f"success: {output_path}, metadata: {metadata_path}")
+        log_action(recipient_email, "Giải mã File", f"Success: {output_path}, metadata: {metadata_path}")
         return str(output_path), metadata
 
     except ValueError as e:
-        log_action(recipient_email, "decrypt_file", f"failed: {str(e)}")
+        log_action(recipient_email, "Giải mã File", f"Failed: {str(e)}")
         raise
     except Exception as e:
-        log_action(recipient_email, "decrypt_file", f"failed: Unexpected error - {str(e)}")
+        log_action(recipient_email, "Giải mã File", f"Failed: Không rõ lỗi - {str(e)}")
         raise

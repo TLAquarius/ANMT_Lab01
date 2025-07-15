@@ -7,18 +7,18 @@ from gui.admin_panel import AdminWindow
 class MainWindow:
     def __init__(self, root):
         self.root = root
-        self.root.title("Authentication System")
+        self.root.title("Demo Đồ Án 1 (22127124-22127392-22127485)")
         self.min_width = 300
         self.min_height = 200
         self.root.configure(padx=20, pady=20)
 
-        tk.Label(root, text="Welcome to the Authentication System").pack(pady=10)
+        tk.Label(root, text="CHỌN CHỨC NĂNG").pack(pady=10)
 
-        self.signup_button = tk.Button(root, text="Sign Up", command=self.open_signup)
+        self.signup_button = tk.Button(root, text="Đăng ký", command=self.open_signup)
         self.signup_button.pack(pady=10)
-        self.login_button = tk.Button(root, text="Login", command=self.open_login)
+        self.login_button = tk.Button(root, text="Đăng nhập", command=self.open_login)
         self.login_button.pack(pady=10)
-        self.reset_button = tk.Button(root, text="Reset Passphrase", command=self.open_reset)
+        self.reset_button = tk.Button(root, text="Khôi phục tài khoản", command=self.open_reset)
         self.reset_button.pack(pady=10)
 
         self.adjust_window_size()
@@ -36,6 +36,14 @@ class MainWindow:
         self.root.geometry(f"{final_width}x{final_height}+{x}+{y}")
         self.root.minsize(self.min_width, self.min_height)
 
+    def disable_buttons(self):
+        self.signup_button.config(state="disabled")
+        self.login_button.config(state="disabled")
+
+    def enable_buttons(self):
+        self.signup_button.config(state="normal")
+        self.login_button.config(state="normal")
+
     def open_signup(self):
         signup_window = tk.Toplevel(self.root)
         SignupWindow(signup_window, self)
@@ -47,6 +55,10 @@ class MainWindow:
     def open_reset(self):
         reset_window = tk.Toplevel(self.root)
         RecoveryWindow(reset_window, self)
+
+    def open_admin(self, admin_email):
+        admin_window = tk.Toplevel(self.root)
+        AdminWindow(admin_window, self, admin_email)
 
 if __name__ == "__main__":
     root = tk.Tk()

@@ -8,7 +8,7 @@ class SignupWindow:
     def __init__(self, root, main_window):
         self.root = root  # Toplevel window
         self.main_window = main_window  # MainWindow instance
-        self.root.title("Sign Up")
+        self.root.title("Đăng ký")
         self.root.transient(main_window.root)
         self.root.grab_set()
 
@@ -26,23 +26,23 @@ class SignupWindow:
         self.email_error = tk.Label(root, text="", fg="red")
         self.email_error.pack()
 
-        tk.Label(root, text="Full Name").pack(pady=5)
+        tk.Label(root, text="Họ tên").pack(pady=5)
         self.name_entry = tk.Entry(root)
         self.name_entry.pack(pady=5)
 
-        tk.Label(root, text="Date of Birth (DD/MM/YYYY)").pack(pady=5)
+        tk.Label(root, text="Ngày sinh (DD/MM/YYYY)").pack(pady=5)
         self.dob_entry = tk.Entry(root)
         self.dob_entry.pack(pady=5)
         self.dob_error = tk.Label(root, text="", fg="red")
         self.dob_error.pack()
 
-        tk.Label(root, text="Phone Number").pack(pady=5)
+        tk.Label(root, text="Điện thoại").pack(pady=5)
         self.phone_entry = tk.Entry(root)
         self.phone_entry.pack(pady=5)
         self.phone_error = tk.Label(root, text="", fg="red")
         self.phone_error.pack()
 
-        tk.Label(root, text="Address").pack(pady=5)
+        tk.Label(root, text="Địa chỉ").pack(pady=5)
         self.address_entry = tk.Entry(root)
         self.address_entry.pack(pady=5)
 
@@ -52,7 +52,7 @@ class SignupWindow:
         self.passphrase_error = tk.Label(root, text="", fg="red")
         self.passphrase_error.pack()
 
-        tk.Label(root, text="Confirm Passphrase").pack(pady=5)
+        tk.Label(root, text="Xác nhận Passphrase").pack(pady=5)
         self.confirm_passphrase_entry = tk.Entry(root, show="*")
         self.confirm_passphrase_entry.pack(pady=5)
         self.confirm_passphrase_error = tk.Label(root, text="", fg="red")
@@ -62,7 +62,7 @@ class SignupWindow:
         self.show_passphrase_var = tk.BooleanVar()
         tk.Checkbutton(
             root,
-            text="Show Passphrases",
+            text="Hiện Passphrases",
             variable=self.show_passphrase_var,
             command=self.toggle_passphrase
         ).pack(pady=5)
@@ -70,8 +70,8 @@ class SignupWindow:
         # Button frame for Submit and Back buttons
         button_frame = tk.Frame(root)
         button_frame.pack(pady=20)
-        tk.Button(button_frame, text="Sign Up", command=self.submit).pack(side=tk.LEFT, padx=10)
-        tk.Button(button_frame, text="Back", command=self.go_back).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Đăng ký", command=self.submit).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Quay lại", command=self.go_back).pack(side=tk.LEFT, padx=10)
 
         # Adjust window size
         self.adjust_window_size()
@@ -157,7 +157,7 @@ class SignupWindow:
 
         # Check if all fields are filled
         if not all([email, full_name, dob, phone, address, passphrase, confirm_passphrase]):
-            messagebox.showerror("Error", "Vui lòng điền đầy đủ thông tin")
+            messagebox.showerror("Lỗi", "Vui lòng điền đầy đủ thông tin")
             return
 
         # Validate email

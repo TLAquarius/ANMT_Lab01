@@ -11,7 +11,7 @@ class RecoveryWindow:
     def __init__(self, root, main_window):
         self.root = root  # Toplevel window
         self.main_window = main_window  # MainWindow instance
-        self.root.title("Reset Passphrase")
+        self.root.title("Khôi phục tài khoản")
         self.root.transient(main_window.root)  # Use main_window.root for transient
         self.root.grab_set()
 
@@ -27,7 +27,7 @@ class RecoveryWindow:
         self.email_entry = tk.Entry(root)
         self.email_entry.pack(pady=5)
 
-        tk.Label(root, text="Recovery code").pack(pady=5)
+        tk.Label(root, text="Mã phục hồi").pack(pady=5)
         self.recovery_code_entry = tk.Entry(root, show="*")
         self.recovery_code_entry.pack(pady=5)
 
@@ -88,7 +88,7 @@ class RecoveryWindow:
             user = next((u for u in users if u["email"] == email), None)
             if not user:
                 self.error_label.config(text="Email không tồn tại")
-                log_action(email, "recovery_passphrase", "failed: Email not found")
+                log_action(email, "Khôi phục tài khoản", "Failed: Email không tồn tại")
                 return
 
             recovery_code_hash = base64.b64decode(user["recovery_code_hash"])
@@ -96,10 +96,10 @@ class RecoveryWindow:
             input_hash = derive_key(recovery_code, recovery_salt)
             if recovery_code_hash != input_hash:
                 self.error_label.config(text="Recovery code không hợp lệ")
-                log_action(email, "recovery_passphrase", "failed: Invalid recovery code")
+                log_action(email, "Khôi phục tài khoản", "failed: Mã phục hồi không hợp lệ")
                 return
 
-            success, message =recovery_passphrase(email, recovery_code, new_passphrase)
+            success, message = recovery_passphrase(email, recovery_code, new_passphrase)
             if success:
                 messagebox.showinfo("Thành công", message)
                 self.main_window.enable_buttons()  # Re-enable main window buttons
@@ -109,7 +109,7 @@ class RecoveryWindow:
                 # Optionally re-enable buttons here if you want to allow retry after failure
                 self.main_window.enable_buttons()
         except Exception as e:
-            log_action(email, "reset_passphrase", f"failed: {str(e)}")
+            log_action(email, "Khôi phục tài khoản", f"Failed: {str(e)}")
             self.error_label.config(text=f"Lỗi: {str(e)}")
             # Optionally re-enable buttons here if you want to allow retry after exception
             self.main_window.enable_buttons()

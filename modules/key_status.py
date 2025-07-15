@@ -11,11 +11,11 @@ def update_key_status(key_data, now):
     expires = datetime.fromisoformat(key_data["expires"])
     valid_days = (expires - now).days
     if valid_days < 0:
-        key_data["status"] = "expired"
+        key_data["status"] = "Hết hạn"
     elif valid_days <= 30:
-        key_data["status"] = "almost expired"
+        key_data["status"] = "Gần hết hạn"
     else:
-        key_data["status"] = "in used"
+        key_data["status"] = "Còn hạn"
     return key_data
 
 def update_public_key_store(email: str):
@@ -42,7 +42,8 @@ def update_public_key_store(email: str):
         }
         with open(public_key_path, "w") as f:
             json.dump(public_key_data, f, indent=4)
+        log_action(email, "Update trạng thái và kho public key", f"Success: Update cho {email}")
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        log_action(email, "update_public_key_store", f"failed: {str(e)}")
+        log_action(email, "Update trạng thái và kho public key", f"Failed: {str(e)}")
         if public_key_path.exists():
             public_key_path.unlink()

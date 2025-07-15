@@ -12,7 +12,7 @@ class LoginWindow:
     def __init__(self, root, main_window):
         self.root = root
         self.main_window = main_window
-        self.root.title("Login")
+        self.root.title("Đăng nhập")
         self.root.transient(main_window.root)
         self.root.grab_set()
 
@@ -35,8 +35,8 @@ class LoginWindow:
         # Button frame for Login and Back buttons
         button_frame = tk.Frame(root)
         button_frame.pack(pady=20)
-        tk.Button(button_frame, text="Login", command=self.submit_login).pack(side=tk.LEFT, padx=10)
-        tk.Button(button_frame, text="Back", command=self.go_back).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Đăng nhập", command=self.submit_login).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Quay lại", command=self.go_back).pack(side=tk.LEFT, padx=10)
 
         # Lockout message
         self.lockout_label = tk.Label(root, text="", fg="red")
@@ -44,16 +44,16 @@ class LoginWindow:
 
         # MFA frame (hidden initially)
         self.mfa_frame = tk.Frame(root)
-        tk.Label(self.mfa_frame, text="Select MFA Method").pack(pady=5)
+        tk.Label(self.mfa_frame, text="Chọn phương thức MFA").pack(pady=5)
         self.mfa_method = tk.StringVar(value="otp")
-        tk.Radiobutton(self.mfa_frame, text="OTP (Email)", variable=self.mfa_method, value="otp").pack()
+        tk.Radiobutton(self.mfa_frame, text="OTP (Email) (mô phỏng bằng in code trong terminal)", variable=self.mfa_method, value="otp").pack()
         tk.Radiobutton(self.mfa_frame, text="TOTP (QR Code)", variable=self.mfa_method, value="totp").pack()
-        tk.Button(self.mfa_frame, text="Generate MFA", command=self.generate_mfa).pack(pady=10)
+        tk.Button(self.mfa_frame, text="Tạo mã MFA", command=self.generate_mfa).pack(pady=10)
 
-        self.code_label = tk.Label(self.mfa_frame, text="Enter 6-digit Code")
+        self.code_label = tk.Label(self.mfa_frame, text="Nhập mã 6 số")
         self.code_entry = tk.Entry(self.mfa_frame)
-        tk.Button(self.mfa_frame, text="Verify", command=self.verify_mfa).pack(pady=10)
-        tk.Button(self.mfa_frame, text="Back", command=self.go_back).pack(pady=10)
+        tk.Button(self.mfa_frame, text="Xác nhận", command=self.verify_mfa).pack(pady=10)
+        tk.Button(self.mfa_frame, text="Quay lại", command=self.go_back).pack(pady=10)
 
         self.qr_label = tk.Label(self.mfa_frame)
 
@@ -82,7 +82,7 @@ class LoginWindow:
         passphrase = self.passphrase_entry.get()
 
         if not email or not passphrase:
-            messagebox.showerror("Error", "Email and passphrase are required")
+            messagebox.showerror("Lỗi", "Email và passphrase không được để trống")
             return
 
         success, user, message = verify_login(email, passphrase)
@@ -94,7 +94,7 @@ class LoginWindow:
             self.lockout_label.config(text="")
             self.mfa_frame.pack(pady=10)
         else:
-            messagebox.showerror("Error", message)
+            messagebox.showerror("Lỗi", message)
 
     def generate_mfa(self):
         if self.mfa_method.get() == "otp":
@@ -102,7 +102,7 @@ class LoginWindow:
             otp, created, expires = generate_otp()
             self.otp_data = {"code": otp, "created": created, "expires": expires}
             print(f"OTP sent to {self.user['email']}: {otp} (expires at {expires})")
-            log_action(self.user['email'], "generate_otp", f"success: OTP {otp}, expires {expires}")
+            log_action(self.user['email'], "Tạo mã OTP (email)", f"Success: OTP {otp}, hạn sử dụng {expires}")
             self.code_label.pack()
             self.code_entry.pack()
         else:
@@ -114,13 +114,13 @@ class LoginWindow:
             self.qr_label.pack()
             self.code_label.pack()
             self.code_entry.pack()
-            log_action(self.user['email'], "generate_totp_qr", f"success: shown QR once")
+            log_action(self.user['email'], "Tạo mã QR cho TOTP", f"Success")
         self.adjust_window_size()
 
     def verify_mfa(self):
         code = self.code_entry.get()
         if not code:
-            messagebox.showerror("Error", "Please enter the MFA code")
+            messagebox.showerror("Lỗi", "Phải nhập mã MFA")
             return
 
         if self.mfa_method.get() == "otp":
@@ -128,21 +128,21 @@ class LoginWindow:
                 expires = datetime.fromisoformat(self.otp_data["expires"])
                 now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
                 if now <= expires:
-                    log_action(self.user['email'], "verify_otp", "success")
+                    log_action(self.user['email'], "Xác minh OTP", "Success")
                     self.open_dashboard()
                 else:
-                    messagebox.showerror("Error", "OTP expired")
-                    log_action(self.user['email'], "verify_otp", "failed: OTP expired")
+                    messagebox.showerror("Lỗi", "OTP hết hạn")
+                    log_action(self.user['email'], "Xác minh OTP", "Failed: OTP hết hạn")
             else:
-                messagebox.showerror("Error", "Invalid OTP")
-                log_action(self.user['email'], "verify_otp", "failed: Invalid OTP")
+                messagebox.showerror("Lỗi", "OTP không hợp lệ")
+                log_action(self.user['email'], "Xác minh OTP", "Failed: OTP không hợp lệ")
         else:
             if verify_totp(self.user["totp_secret"], code):
-                log_action(self.user['email'], "verify_totp", "success")
+                log_action(self.user['email'], "Xác minh TOTP", "Success")
                 self.open_dashboard()
             else:
-                messagebox.showerror("Error", "Invalid TOTP code")
-                log_action(self.user['email'], "verify_totp", "failed: Invalid TOTP code")
+                messagebox.showerror("Lỗi", "TOTP không hợp lệ")
+                log_action(self.user['email'], "Xác minh TOTP", "Failed: TOTP không hợp lệ")
 
     def open_dashboard(self):
         """Open the dashboard window and close the login window."""

@@ -159,15 +159,12 @@ class KeyStorageWindow:
             entry.config(state="readonly")
 
     def create_new_keys(self):
-        """Call DashboardWindow's create_new_keys with callback to refresh keys."""
         self.dashboard_window.create_new_keys(callback=self.load_keys)
 
     def extend_keys(self):
-        """Call DashboardWindow's extend_keys with callback to refresh keys."""
         self.dashboard_window.extend_keys(callback=self.load_keys)
 
     def close_window(self):
-        """Cancel scheduled updates and close the window."""
         if hasattr(self, 'update_job'):
             self.root.after_cancel(self.update_job)  # Stop periodic updates
         self.root.destroy()

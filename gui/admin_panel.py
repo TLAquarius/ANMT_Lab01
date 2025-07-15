@@ -6,7 +6,7 @@ from modules.logger import log_action
 class AdminWindow:
     def __init__(self, root, main_window, admin_email):
         if not is_admin(admin_email):
-            log_action(admin_email, "open_admin_window", "failed: Not an admin")
+            log_action(admin_email, "Mở màn hình admin", "Failed: Không có quyền admin")
             messagebox.showerror("Lỗi", "Bạn không có quyền admin")
             root.destroy()
             return
@@ -122,7 +122,7 @@ class AdminWindow:
         self.log_text.config(state="normal")
         self.log_text.delete("1.0", tk.END)
         for log in logs:
-            self.log_text.insert(tk.END, f"{log['timestamp']} | {log['email']} | {log['action']} | {log['status']}\n")
+            self.log_text.insert(tk.END, f"Thời gian: {log['timestamp']} | Email: {log['email']} | Hành động: {log['action']} | Trạng thái: {log['status']}\n")
         self.log_text.config(state="disabled")
 
     def close(self):

@@ -71,16 +71,16 @@ def sign_file(file_path: str, signer_email: str, passphrase: str) -> tuple[bool,
         with open(original_file, "wb") as f:
             f.write(data_to_sign)
 
-        log_action(signer_email, "sign_file", f"success: Signed {input_file.name}, saved to {signature_path}")
+        log_action(signer_email, "Ký số File", f"Success: Đã ký {input_file.name}, lưu tại {signature_path}")
         return True, f"Tệp đã được ký thành công! Chữ ký được lưu tại:\n{signature_path}", str(signature_path)
 
     except (ValueError, FileNotFoundError) as e:
         # Bắt các lỗi đã biết (passphrase sai, khóa hết hạn, tệp không tồn tại, v.v.)
-        log_action(signer_email, "sign_file", f"failed: {str(e)}")
+        log_action(signer_email, "Ký số File", f"Failed: {str(e)}")
         return False, f"Lỗi khi ký tệp: {str(e)}", ""
     except Exception as e:
         # Bắt các lỗi không mong muốn khác
-        log_action(signer_email, "sign_file", f"failed: Unexpected error - {str(e)}")
+        log_action(signer_email, "Ký số File", f"failed: Không rõ lỗi - {str(e)}")
         return False, f"Lỗi không mong muốn đã xảy ra: {str(e)}", ""
 
 def verify_signature(original_file_path: str, signature_file_path: str, verifier_email: str) -> dict:
@@ -165,10 +165,10 @@ def verify_signature(original_file_path: str, signature_file_path: str, verifier
         if not found_valid_key:
             result["message"] = "Chữ ký không hợp lệ hoặc không tìm thấy khóa công khai phù hợp (có thể khóa đã hết hạn tại thời điểm ký)."
 
-        log_action(verifier_email, "verify_signature", f"{'success' if found_valid_key else 'failed'}: {result['message']} for file {original_file.name}")
+        log_action(verifier_email, "Xác minh chữ ký", f"{'Success' if found_valid_key else 'Failed'}: {result['message']} cho {original_file.name}")
         return result
 
     except Exception as e:
         result["message"] = f"Lỗi khi xác minh: {str(e)}"
-        log_action(verifier_email, "verify_signature", f"failed: {str(e)}")
+        log_action(verifier_email, "Xác minh chữ ký", f"Failed: {str(e)}")
         return result

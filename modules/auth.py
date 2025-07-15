@@ -33,22 +33,22 @@ def verify_passphrase(email: str, passphrase: str) -> tuple[bool, str]:
         with open(USERS_FILE, "r") as f:
             users = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        log_action(email, "verify_passphrase", "failed: No users registered")
+        log_action(email, "Kiểm tra mật khẩu", "Failed: Chưa có người dùng đăng ký")
         return False, "Chưa có user"
 
     user = next((u for u in users if u["email"] == email), None)
     if not user:
-        log_action(email, "verify_passphrase", "failed: Email not found")
+        log_action(email, "Kiểm tra mật khẩu", "Failed: Email không tồn tại")
         return False, "Email không tồn tại"
 
     stored_hash = base64.b64decode(user["hashed_passphrase"])
     salt = base64.b64decode(user["salt"])
     input_hash = derive_key(passphrase, salt)
     if stored_hash == input_hash:
-        log_action(email, "verify_passphrase", "success")
+        log_action(email, "Kiểm tra mật khẩu", "Success")
         return True, ""
     else:
-        log_action(email, "verify_passphrase", "failed: Incorrect passphrase")
+        log_action(email, "Kiểm tra mật khẩu", "failed: Passphrase bị sai")
         return False, "Passphrase không hợp lệ"
 
 def generate_recovery_code() -> str:
@@ -68,13 +68,13 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
 
         # Check email uniqueness
         if any(user["email"] == email for user in users):
-            log_action(email, "sign_up", "failed: Email already exists")
+            log_action(email, "Đăng ký", "Failed: Email đã tồn tại")
             return False, "Email đã tồn tại", ""
 
         # Validate passphrase
         valid, error = validate_passphrase(passphrase)
         if not valid:
-            log_action(email, "sign_up", f"failed: {error}")
+            log_action(email, "Đăng ký", f"Failed: {error}")
             return False, error, ""
 
         # Hash passphrase
@@ -126,11 +126,11 @@ def sign_up(email: str, full_name: str, dob: str, phone: str, address: str, pass
         storage_dir.mkdir(parents=True, exist_ok=True)
         public_keys_dir.mkdir(parents=True, exist_ok=True)
 
-        log_action(email, "sign_up", f"success: Role assigned {'admin' if not users else 'user'}")
+        log_action(email, "Đăng ký", f"Success: Người dùng được cấp quyền {'admin' if not users else 'user'}")
         return True, "Đăng ký thành công", recovery_code
 
     except Exception as e:
-        log_action(email, "sign_up", f"failed: {str(e)}")
+        log_action(email, "Đăng ký", f"Failed: {str(e)}")
         return False, f"Error: {str(e)}", ""
 
 def get_remaining_lockout_time(lockout_until: str) -> int:
@@ -148,7 +148,7 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
         with open(USERS_FILE, "r") as f:
             users = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        log_action(email, "login", "failed: No users registered")
+        log_action(email, "Đăng nhập", "failed: Chưa có người dùng")
         return False, None, "Chưa có user"
 
     for user in users:
@@ -156,7 +156,7 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
             # Check lockout status
             remaining_time = get_remaining_lockout_time(user.get("lockout_until"))
             if remaining_time > 0:
-                log_action(email, "login", f"failed: Account locked for {remaining_time} seconds")
+                log_action(email, "Đăng nhập", f"Failed: Tài khoản đã bị khóa. Thử lại sau {remaining_time} giây.")
                 return False, None, f"Tài khoản đã bị khóa. Thử lại sau {remaining_time} giây."
 
             stored_hash = base64.b64decode(user["hashed_passphrase"])
@@ -170,10 +170,10 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
                 with open(USERS_FILE, "w") as f:
                     json.dump(users, f, indent=4)
                 if user["status"] == "unlocked":
-                    log_action(email, "login", "success: Passphrase verified")
+                    log_action(email, "Đăng nhập", "Success")
                     return True, user, ""
                 else:
-                    log_action(email, "login", "failed: Locked user")
+                    log_action(email, "Đăng nhập", "Failed: Tài khoản đã bị khóa")
                     return False, None, "Tài khoản đã bị khóa"
             else:
                 # Increment failed attempts
@@ -183,11 +183,12 @@ def verify_login(email: str, passphrase: str) -> tuple[bool, dict, str]:
                     user["failed_attempts"] = 0
                 with open(USERS_FILE, "w") as f:
                     json.dump(users, f, indent=4)
-                log_action(email, "login", f"failed: Incorrect passphrase (attempt {user['failed_attempts']})")
+                log_action(email, "Đăng nhập", f"Failed: Passphrase bị sai (số lần nhập sai {user['failed_attempts']})")
                 if user.get("lockout_until"):
                     remaining_time = get_remaining_lockout_time(user["lockout_until"])
+                    log_action(email, "Đăng nhập", f"Failed: Tài khoản đã bị khóa. Thử lại sau {remaining_time} giây.")
                     return False, None, f"Tài khoản đã bị khóa. Thử lại sau {remaining_time} giây."
                 return False, None, "Tên người dùng hoặc mật khẩu bị sai"
 
-    log_action(email, "login", "failed: Email not found")
+    log_action(email, "Đăng nhập", "Failed: Email không tồn tại")
     return False, None, "Tên người dùng hoặc mật khẩu bị sai"

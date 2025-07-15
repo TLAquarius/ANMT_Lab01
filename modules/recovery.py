@@ -18,13 +18,13 @@ def recovery_passphrase(email: str, recovery_code: str, new_passphrase: str) -> 
             with open(USERS_FILE, "r") as f:
                 users = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            log_action(email, "recovery_passphrase", "failed: No users registered")
+            log_action(email, "Khôi phục tài khoản", "Failed: Chưa có user")
             return False, "Chưa có user"
 
         # Find user
         user = next((u for u in users if u["email"] == email), None)
         if not user:
-            log_action(email, "recovery_passphrase", "failed: Email not found")
+            log_action(email, "Khôi phục tài khoản", "Failed: Email không tồn tại")
             return False, "Email không tồn tại"
 
         # Verify recovery code
@@ -32,13 +32,13 @@ def recovery_passphrase(email: str, recovery_code: str, new_passphrase: str) -> 
         recovery_salt = base64.b64decode(user["recovery_code_salt"])
         input_hash = derive_key(recovery_code, recovery_salt)
         if recovery_code_hash != input_hash:
-            log_action(email, "recovery_passphrase", "failed: Invalid recovery code")
+            log_action(email, "Khôi phục tài khoản", "Failed: Mã phục hồi bị sai")
             return False, "Mã khôi phục không hợp lệ"
 
         # Validate new passphrase
         valid, error = validate_passphrase(new_passphrase)
         if not valid:
-            log_action(email, "recovery_passphrase", f"failed: {error}")
+            log_action(email, "Khôi phục tài khoản", f"Failed: {error}")
             return False, error
 
         # Decrypt private key with recovery code
@@ -80,7 +80,7 @@ def recovery_passphrase(email: str, recovery_code: str, new_passphrase: str) -> 
             })
             with open(key_path, "w") as f:
                 json.dump(key_data, f, indent=4)
-            log_action(email, "recovery_passphrase", "success: Re-encrypted existing key")
+            log_action(email, "Khôi phục tài khoản", "Success: Đã mã hóa lại private key")
             # Update users.json with new passphrase hash and salt
             user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
             user["salt"] = base64.b64encode(new_salt).decode()
@@ -90,7 +90,7 @@ def recovery_passphrase(email: str, recovery_code: str, new_passphrase: str) -> 
             return True, "Passphrase được đặt lại và RSA keys được khôi phục thành công"
 
         key_data = generate_rsa_keypair(email, new_passphrase, recovery_code, mode="renew")
-        log_action(email, "recovery_passphrase", f"success: {message}. Generated new key")
+        log_action(email, "Khôi phục tài khoản", f"Success: {message}. ")
         user["hashed_passphrase"] = base64.b64encode(new_hashed_passphrase).decode()
         user["salt"] = base64.b64encode(new_salt).decode()
         with open(USERS_FILE, "w") as f:
@@ -100,7 +100,7 @@ def recovery_passphrase(email: str, recovery_code: str, new_passphrase: str) -> 
         return True, "Passphrase được đặt lại và RSA keys được tạo mới (key cũ không có recovery code)"
 
     except Exception as e:
-        log_action(email, "recovery_passphrase", f"failed: {str(e)}")
+        log_action(email, "Khôi phục tài khoản", f"Failed: {str(e)}")
         return False, f"Lỗi: {str(e)}"
 
 def change_passphrase(email: str, old_passphrase: str, new_passphrase: str) -> tuple[bool, str]:
@@ -114,8 +114,8 @@ def change_passphrase(email: str, old_passphrase: str, new_passphrase: str) -> t
             users = json.load(f)
         user = next((u for u in users if u["email"] == email), None)
         if not user:
-            log_action(email, "change_passphrase", "failed: Email not found")
-            return False, "Email not found"
+            log_action(email, "Đổi passphrase mới", "Failed: Email không tồn tại")
+            return False, "Email không tồn tại"
 
         # Load rsa_keypair.json
         safe_email = email.replace("@", "_at_").replace(".", "_dot_")
@@ -157,9 +157,9 @@ def change_passphrase(email: str, old_passphrase: str, new_passphrase: str) -> t
         with open(users_file, "w") as f:
             json.dump(users, f, indent=4)
 
-        log_action(email, "change_passphrase", "success")
-        return True, "Passphrase changed successfully"
+        log_action(email, "Đổi passphrase mới", "Success")
+        return True, "Passphrase được đổi thành công"
 
     except Exception as e:
-        log_action(email, "change_passphrase", f"failed: {str(e)}")
-        return False, f"Error: {str(e)}"
+        log_action(email, "Đổi passphrase mới", f"Failed: {str(e)}")
+        return False, f"Lỗi: {str(e)}"
